@@ -1,0 +1,21 @@
+{
+  "name": "EthernetWebServer",
+  "version": "2.4.0",
+  "description": "Simple Ethernet WebServer for ESP8266 + W5x00 (vendored). Original by Khoi Hoang.",
+  "keywords": "WebServer, Ethernet, EthernetLarge, ESP8266, W5500",
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif8266",
+  "headers": ["EthernetWebServer.h"],
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src"
+  },
+  "dependencies": [
+    {
+      "owner": "khoih-prog",
+      "name": "Functional-Vlpp",
+      "version": "^1.0.2"
+    }
+  ]
+}

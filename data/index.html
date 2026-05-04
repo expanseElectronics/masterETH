@@ -1,0 +1,2723 @@
+<!DOCTYPE html>
+<!-- expanseElectronics masterETH SPA — source of truth.
+     Edit this file, then regenerate src/ui.cpp:
+
+       python3 -c "
+       import sys
+       with open('data/index.html','rb') as f: data = f.read()
+       out = ['// Auto-generated from data/index.html — do not edit by hand.',
+              '// Regenerate with the python one-liner in the comment at the top of data/index.html.',
+              '',
+              '// manager.h transitively includes api.h; the matching extern declaration',
+              '// there is what gives this definition external linkage. Without it, const',
+              '// at namespace scope has internal linkage in C++ and api.cpp wont link.',
+              '#include \"manager.h\"',
+              '',
+              'const char uiHtml[] PROGMEM =']
+       line = ''
+       for ch in data:
+           line += '\\\\x%02x' % ch
+           if len(line) >= 96:
+               out.append('  \"' + line + '\"')
+               line = ''
+       if line:
+           out.append('  \"' + line + '\"')
+       out.append('  ;')
+       open('src/ui.cpp','w').write('\\n'.join(out) + '\\n')
+       "
+
+     Then rebuild + flash (pio run -t upload). -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>masterETH — expanseElectronics</title>
+  <style>
+:root {
+  --bg:        #090909;
+  --surface:   #111;
+  --surface2:  #161616;
+  --border:    #252525;
+  --border2:   #333;
+  --text:      #d8d8d8;
+  --text-dim:  #777;
+  --accent:    #e07800;
+  --accent2:   #ff9a1f;
+  --ok:        #22cc77;
+  --warn:      #e07800;
+  --err:       #e03333;
+  --mono:      ui-monospace, 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+  --sans:      system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius:    3px;
+  --sidebar-w: 220px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+a { color: var(--accent2); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+#shell { display: flex; height: 100vh; overflow: hidden; }
+#sidebar {
+  width: var(--sidebar-w); min-width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#main { flex: 1; overflow-y: auto; background: var(--bg); }
+#content { max-width: 760px; padding: 32px 40px; }
+
+.brand { padding: 24px 20px 16px; border-bottom: 1px solid var(--border); }
+.brand-org {
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 4px;
+}
+.brand-product {
+  font-family: var(--mono); font-size: 18px; font-weight: 700;
+  color: var(--text); line-height: 1.2;
+}
+.brand-product span { color: var(--accent); }
+
+nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+nav a {
+  display: block; padding: 8px 20px;
+  color: var(--text-dim); font-size: 13px; letter-spacing: 0.02em;
+  transition: color 0.1s, background 0.1s;
+  border-left: 2px solid transparent;
+}
+nav a:hover { color: var(--text); background: var(--surface2); text-decoration: none; }
+nav a.active {
+  color: var(--accent2); border-left-color: var(--accent);
+  background: rgba(224,120,0,0.07);
+}
+#rebootLink { color: var(--err); margin-top: 4px; }
+#rebootLink:hover { color: #ff5555; background: rgba(224,51,51,0.08); }
+
+.sidebar-footer {
+  padding: 12px 20px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-dim);
+}
+
+.section-title {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 24px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.section-header .section-title { margin: 0; padding: 0; border: 0; }
+.section-section-title {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px; padding-left: 2px;
+}
+.subsection { margin-bottom: 20px; }
+
+.status-grid {
+  display: grid; grid-template-columns: 160px 1fr; gap: 1px;
+  background: var(--border); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.status-grid .sk, .status-grid .sv { padding: 9px 14px; background: var(--surface); }
+.status-grid .sk {
+  color: var(--text-dim); font-size: 12px; letter-spacing: 0.04em;
+}
+.status-grid .sv {
+  font-family: var(--mono); font-size: 13px;
+  background: var(--surface2);
+  display: flex; align-items: center; gap: 8px;
+  word-break: break-all;
+}
+.status-grid .sv.ok   { color: var(--ok); }
+.status-grid .sv.warn { color: var(--warn); }
+.status-grid .sv.err  { color: var(--err); }
+.status-grid .sv.dim  { color: var(--text-dim); }
+
+/* Inputs embedded inside .status-grid .sv cells. The .sv cell itself is a
+   flex container with consistent padding, so inputs sit naturally on the
+   row. We override the page-level input width:100% rule so single-value
+   inputs stay compact instead of stretching the cell. */
+.status-grid .sv input[type=text],
+.status-grid .sv input[type=number],
+.status-grid .sv select {
+  width: auto;
+  padding: 5px 8px; font-size: 12px;
+}
+.status-grid .sv input[type=text]   { min-width: 220px; }
+.status-grid .sv input[type=number] { width: 80px; }
+.status-grid .sv .ip-row            { gap: 4px; }
+.status-grid .sv .ip-row input[type=number] { width: 50px; padding: 5px 4px; text-align: center; }
+.status-grid .sv .hint              { font-size: 11px; color: var(--text-dim); }
+
+.dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; flex-shrink: 0;
+  background: var(--text-dim);
+  box-shadow: 0 0 6px transparent;
+}
+.dot.ok   { background: var(--ok);   box-shadow: 0 0 8px rgba(34,204,119,0.5); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 8px rgba(224,120,0,0.5); }
+.dot.err  { background: var(--err);  box-shadow: 0 0 8px rgba(224,51,51,0.5); }
+
+.led-cell {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+.led-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #2a2d30;
+  box-shadow: inset 0 0 1px rgba(0,0,0,0.6);
+  flex-shrink: 0;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.led-label {
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); line-height: 1.3;
+}
+.led-label .sub { display: block; color: var(--text-dim); font-weight: 400; opacity: 0.7; }
+.led-dot.boot        { background: #4fbcc4; box-shadow: 0 0 8px rgba(79,188,196,0.4); }
+.led-dot.link-down   { background: #c43c3c; box-shadow: 0 0 8px rgba(196,60,60,0.45); }
+.led-dot.searching   { background: #ff5ab4; box-shadow: 0 0 8px rgba(255,90,180,0.4);  animation: led-pulse 3s ease-in-out infinite; }
+.led-dot.healthy     { background: #2ecc71; box-shadow: 0 0 8px rgba(46,204,113,0.4);  animation: led-pulse 3s ease-in-out infinite; }
+.led-dot.all-offline { background: #ff8c1a; box-shadow: 0 0 8px rgba(255,140,26,0.4);  animation: led-pulse 3s ease-in-out infinite; }
+@keyframes led-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+.tag {
+  font-family: var(--sans); font-size: 10px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid var(--border2); border-radius: 2px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+.tag.ok   { color: var(--ok);   border-color: rgba(34,204,119,0.4); }
+.tag.warn { color: var(--warn); border-color: rgba(224,120,0,0.4); }
+.tag.err  { color: var(--err);  border-color: rgba(224,51,51,0.4); }
+
+/* ── Detail page tabs ────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 12px 22px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.1s, border-color 0.1s;
+  border-radius: 0;
+}
+.tab-btn:hover  { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── Port form heading ───────────────────────────────────── */
+.port-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.port-heading .port-label {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent);
+}
+.port-heading .port-mode {
+  font-family: var(--mono); font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.config-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+/* ── Search bar ──────────────────────────────────────────── */
+.search-bar {
+  display: flex; gap: 8px; align-items: center;
+  margin-bottom: 12px;
+}
+.search-bar input[type=text] {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono); font-size: 13px;
+  padding: 7px 12px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.search-bar input[type=text]:focus { border-color: var(--accent); background: var(--surface2); }
+.search-bar input::placeholder { color: var(--text-dim); }
+
+/* ── Live status strip on node row ──────────────────────── */
+.row-body { min-width: 0; }
+.live-strip {
+  display: flex; gap: 18px;
+  margin-top: 4px;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text-dim);
+}
+.live-strip .port { display: inline-flex; align-items: center; gap: 6px; }
+.live-strip .ldot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border2);
+  flex-shrink: 0;
+}
+.live-strip .ldot.active {
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(34,204,119,0.6);
+}
+.live-strip .m { color: var(--text-dim); }
+.live-strip .r { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* "needs v7.4" pill in summary line */
+.node-summary .needs-update { color: var(--warn); }
+.node-summary .needs-update strong { color: var(--warn); }
+
+/* Real nodeName beside a user tag — subdued so the tag reads first */
+.node-row .real-name { color: var(--text-dim); font-weight: 400; font-size: 12px; }
+
+/* Focus ring for keyboard navigation */
+.node-row:focus { outline: none; background: var(--surface2); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* ── Tag editor on detail page header ───────────────────── */
+.tag-editor {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: 10px;
+}
+.tag-editor .current {
+  font-family: var(--mono); font-size: 11px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent);
+  padding: 2px 8px;
+  border: 1px solid rgba(224,120,0,0.4);
+  border-radius: 2px;
+}
+.tag-editor .pencil {
+  background: none; border: 1px solid var(--border2);
+  color: var(--text-dim); cursor: pointer;
+  font-size: 11px; padding: 2px 6px;
+  border-radius: 2px; line-height: 1;
+}
+.tag-editor .pencil:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── Fleet aggregate on System page ─────────────────────── */
+.fleet-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.fleet-grid .fk, .fleet-grid .fv {
+  padding: 12px 14px;
+  background: var(--surface);
+}
+.fleet-grid .fk { color: var(--text-dim); font-size: 12px; letter-spacing: 0.04em; }
+.fleet-grid .fv { font-family: var(--mono); font-size: 13px; background: var(--surface2); }
+.config-section-title {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bar { display: inline-block; width: 60px; height: 4px;
+  background: var(--border); border-radius: 2px; margin-left: 8px;
+  overflow: hidden; vertical-align: middle; }
+.bar-fill { display: block; height: 100%; background: var(--accent); }
+
+.heartbeat {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+.hb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); opacity: 0.4; }
+.heartbeat.pulse .hb-dot { animation: hb-pulse 1.6s ease-out; }
+@keyframes hb-pulse {
+  0%   { opacity: 1;   transform: scale(1.6); box-shadow: 0 0 12px var(--ok); }
+  100% { opacity: 0.4; transform: scale(1);   box-shadow: 0 0 0 transparent; }
+}
+
+/* ── Node list ───────────────────────────────────────────── */
+.node-summary {
+  display: flex; gap: 16px; align-items: center;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text-dim); margin-bottom: 16px;
+  padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.node-summary strong { color: var(--text); font-weight: 500; }
+.node-summary .sep { color: var(--border2); }
+
+.node-list {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden;
+}
+.node-row {
+  display: grid;
+  grid-template-columns: 16px 14px 1fr auto auto;
+  gap: 14px; align-items: center;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.node-row .node-select { cursor: pointer; }
+
+.bulk-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; margin: 8px 0 12px 0;
+  background: var(--surface2); border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font-family: var(--mono); font-size: 12px;
+  color: var(--text);
+}
+.bulk-bar .count { color: var(--accent); font-weight: 600; }
+.bulk-bar .spacer { margin-left: auto; }
+.node-row:hover { background: var(--surface2); }
+.node-row:last-child { border-bottom: none; }
+.node-row .name {
+  font-family: var(--mono); font-size: 14px;
+  color: var(--text); font-weight: 500;
+}
+.node-row .name .unidentified { color: var(--text-dim); font-style: italic; font-weight: 400; }
+.node-row .meta {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text-dim); margin-top: 2px;
+  display: flex; gap: 12px; flex-wrap: wrap;
+}
+.node-row .meta .ip { color: var(--accent2); }
+.node-row .arrow { color: var(--text-dim); font-family: var(--mono); }
+.node-row.offline .name { color: var(--text-dim); }
+.node-row.offline .dot { background: var(--text-dim); box-shadow: none; }
+
+.empty-state {
+  padding: 40px 20px; text-align: center;
+  color: var(--text-dim); font-size: 13px;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+}
+
+/* ── Forms ───────────────────────────────────────────────── */
+.form-group {
+  display: grid; grid-template-columns: 160px 1fr;
+  align-items: center; padding: 8px 0;
+  border-bottom: 1px solid var(--border); gap: 16px;
+}
+.form-group:last-of-type { border-bottom: none; }
+.form-group label { font-size: 13px; color: var(--text-dim); }
+
+input[type=text], input[type=number], select {
+  background: var(--surface2);
+  border: 1px solid var(--border2); border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono); font-size: 13px;
+  padding: 6px 10px; width: 100%; outline: none;
+  transition: border-color 0.15s;
+}
+input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent); }
+input[type=number] { width: 80px; }
+
+.ip-row { display: flex; align-items: center; gap: 4px; }
+.ip-row input[type=number] { width: 58px; text-align: center; }
+.ip-row .sep { color: var(--text-dim); font-family: var(--mono); }
+
+input[type=checkbox] {
+  accent-color: var(--accent);
+  width: 16px; height: 16px; cursor: pointer;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn-row { margin-top: 24px; display: flex; gap: 10px; align-items: center; }
+button, .btn {
+  font-family: var(--sans); font-size: 13px;
+  padding: 7px 18px; border-radius: var(--radius);
+  border: 1px solid transparent; cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+.btn-secondary { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+.btn-secondary:hover { background: var(--surface); border-color: var(--accent); }
+.btn-danger { background: var(--err); color: #fff; border-color: var(--err); font-weight: 600; }
+.btn-danger:hover { background: #ff5555; }
+.btn-small { font-size: 11px; padding: 4px 10px; }
+.save-status {
+  font-size: 12px; color: var(--ok); opacity: 0;
+  transition: opacity 0.3s;
+}
+.save-status.show { opacity: 1; }
+
+.fw-info { font-family: var(--mono); font-size: 13px; color: var(--text-dim); margin-bottom: 20px; }
+.fw-info span { color: var(--text); }
+.file-input-wrapper { position: relative; display: inline-block; }
+.file-input-wrapper input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%;
+}
+.file-label {
+  display: inline-block; padding: 7px 18px;
+  background: var(--surface2);
+  border: 1px solid var(--border2); border-radius: var(--radius);
+  font-size: 13px; color: var(--text-dim);
+  cursor: pointer; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  max-width: 280px;
+}
+.file-label.has-file { color: var(--text); border-color: var(--accent); }
+.progress-bar {
+  height: 4px; background: var(--border);
+  border-radius: 2px; margin: 12px 0;
+  overflow: hidden; display: none;
+}
+.progress-bar.show { display: block; }
+.progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.2s; }
+#uploadMsg { font-size: 13px; margin-top: 8px; min-height: 18px; color: var(--text-dim); }
+
+dialog {
+  background: var(--surface);
+  border: 1px solid var(--border2); border-radius: var(--radius);
+  color: var(--text); padding: 0; max-width: 400px; width: 90%;
+}
+dialog::backdrop { background: rgba(0,0,0,0.65); }
+.dlg-inner { padding: 28px 24px 20px; }
+.dlg-inner h2 { font-family: var(--mono); font-size: 16px; margin-bottom: 10px; color: var(--err); }
+.dlg-inner p { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+.dlg-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 10px 18px;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius); font-size: 13px; color: var(--text);
+  transform: translateY(12px); opacity: 0; pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 100;
+}
+#toast.show { opacity: 1; transform: none; }
+#toast.ok   { border-left: 3px solid var(--ok);  }
+#toast.err  { border-left: 3px solid var(--err); }
+#toast.warn { border-left: 3px solid var(--warn);}
+
+.loading, .error-msg { padding: 40px 0; color: var(--text-dim); font-size: 13px; }
+.error-msg { color: var(--err); }
+.divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+
+#rebootingMsg { text-align: center; padding: 60px 0; }
+#rebootingMsg h2 { font-family: var(--mono); color: var(--warn); margin-bottom: 8px; }
+#rebootingMsg p { color: var(--text-dim); font-size: 13px; }
+
+@media (max-width: 640px) {
+  :root { --sidebar-w: 180px; }
+  #content { padding: 20px; }
+  .form-group { grid-template-columns: 120px 1fr; }
+  .status-grid { grid-template-columns: 120px 1fr; }
+}
+@media (max-width: 480px) {
+  #shell { flex-direction: column; }
+  #sidebar { width: 100%; min-width: 0; flex-direction: row; align-items: center;
+             border-right: none; border-bottom: 1px solid var(--border); }
+  .brand { border-bottom: none; padding: 12px; }
+  nav { display: flex; overflow-x: auto; padding: 0; }
+  nav a { white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; }
+  nav a.active { border-left: none; border-bottom-color: var(--accent); }
+  .sidebar-footer { display: none; }
+}
+  </style>
+</head>
+<body>
+  <div id="shell">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-org">expanseElectronics</div>
+        <div class="brand-product">master<span>ETH</span></div>
+      </div>
+      <nav id="nav">
+        <a href="#" data-page="nodes"    class="active">Nodes</a>
+        <a href="#" data-page="universes">Universes</a>
+        <a href="#" data-page="network">IP &amp; Network</a>
+        <a href="#" data-page="system">System</a>
+        <a href="#" data-page="firmware">Firmware</a>
+        <a href="#" id="rebootLink">Reboot</a>
+      </nav>
+      <div class="sidebar-footer">
+        <p>GPL v3 · <a href="https://github.com/expanseelectronics/" target="_blank" rel="noreferrer">expanseElectronics</a></p>
+      </div>
+    </aside>
+    <main id="main">
+      <div id="content"><div class="loading">Loading…</div></div>
+    </main>
+  </div>
+  <dialog id="rebootDlg">
+    <div class="dlg-inner">
+      <h2>Reboot masterETH?</h2>
+      <p>The masterETH will restart. This page will reload after 8 seconds.</p>
+      <div class="dlg-actions">
+        <button id="rebootConfirm" class="btn-danger">Reboot</button>
+        <button id="rebootCancel"  class="btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+  <div id="toast"></div>
+  <script>
+'use strict';
+
+const $ = id => document.getElementById(id);
+const content = $('content');
+let currentPage = 'nodes';
+let pollTimer = null;
+
+function toast(msg, type = 'ok', duration = 3000) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = ''; }, duration);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function ipInputs(name, values) {
+  const parts = (values || [0,0,0,0]);
+  return ['','','',''].map((_, i) =>
+    `<input type="number" name="${name}_${i}" value="${parts[i]||0}" min="0" max="255">`
+  ).join('<span class="sep">.</span>');
+}
+function readIpInputs(form, name) {
+  return [0,1,2,3].map(i => parseInt(form.querySelector(`[name="${name}_${i}"]`)?.value || 0, 10));
+}
+
+function showSaved(id) {
+  const el = $(id); if (!el) return;
+  el.textContent = '✓ Saved';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function ledLabel(s) {
+  switch (s) {
+    case 'boot':        return 'Booting';
+    case 'link-down':   return 'No link';
+    case 'searching':   return 'Searching';
+    case 'healthy':     return 'Healthy';
+    case 'all-offline': return 'All offline';
+    default:            return '—';
+  }
+}
+
+function compatTag(c) {
+  if (c === 'compatible')   return '<span class="tag ok">Compatible</span>';
+  if (c === 'readonly')     return '<span class="tag warn">Needs v7.4</span>';
+  if (c === 'incompatible') return '<span class="tag err">Incompatible</span>';
+  return '<span class="tag">Unknown</span>';
+}
+
+// Cross-origin fetch against a discovered node. The node serves
+// Access-Control-Allow-Origin:* on /api/* from v7.4+ — pre-v7.4 nodes
+// fail the preflight, which is why the registry flags them as
+// "readonly" and the SPA refuses to even render edit forms for them.
+//
+// Per-node serialization: dualETH's webServer is a single-listener,
+// single-socket accept loop. Parallel TCP connects to the same node
+// are RST-refused before they reach the server. This wrapper chains
+// every request to a given IP behind any prior in-flight one, so the
+// SPA can fire as many fetches as it wants without tripping the wire.
+// Cross-node parallelism is fine — each node has its own listener.
+const nodeRequestQueues = new Map();  // ip -> tail Promise
+async function nodeApi(method, ip, path, body) {
+  const exec = async () => {
+    const url = 'http://' + ip + path;
+    const opts = { method, headers: {} };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  };
+  const prev = nodeRequestQueues.get(ip) || Promise.resolve();
+  // .catch swallow on the prev tail so a failure doesn't poison the chain.
+  const next = prev.catch(() => {}).then(exec);
+  nodeRequestQueues.set(ip, next);
+  // Cleanup: when this is the trailing call, drop the map entry to avoid
+  // unbounded growth on a long-running SPA session.
+  next.finally(() => {
+    if (nodeRequestQueues.get(ip) === next) nodeRequestQueues.delete(ip);
+  });
+  return next;
+}
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+//
+// User-visible labels for nodes, separate from the on-network nodeName
+// (which gets broadcast in ArtPollReply, sees it on every Art-Net tool,
+// and changing it on the node requires a rewrite + reboot). Tags are
+// MAC-keyed and persisted in masterETH EEPROM via /api/tags so labels
+// follow the deployment, not the browser.
+//
+// In-memory cache populated from /api/tags on app load. setTag writes to
+// the server first, then mirrors locally on success.
+
+const TAG_STORAGE_KEY = 'masterETH:tags:v1';   // legacy, kept for one-shot migration
+let tagStore = {};
+
+function getTag(mac) { return tagStore[mac] || ''; }
+
+async function setTag(mac, label) {
+  const clean = (label || '').trim();
+  try {
+    await api('POST', '/api/tags', { mac, label: clean });
+    if (clean) tagStore[mac] = clean; else delete tagStore[mac];
+  } catch (e) {
+    toast('Save tag failed: ' + e.message, 'err');
+    throw e;
+  }
+}
+
+async function loadServerTags() {
+  try {
+    const resp = await api('GET', '/api/tags');
+    tagStore = {};
+    for (const { mac, label } of (resp.tags || [])) {
+      if (mac && label) tagStore[mac] = label;
+    }
+    // One-shot migration: if the server has no tags but localStorage
+    // does, push the local set up. Drops the localStorage flag on
+    // success so we never re-migrate.
+    if (Object.keys(tagStore).length === 0) {
+      let legacy = {};
+      try { legacy = JSON.parse(localStorage.getItem(TAG_STORAGE_KEY) || '{}'); }
+      catch (e) {}
+      const macs = Object.keys(legacy);
+      if (macs.length > 0) {
+        for (const mac of macs) {
+          try {
+            await api('POST', '/api/tags', { mac, label: legacy[mac] });
+            tagStore[mac] = legacy[mac];
+          } catch (e) {}
+        }
+        localStorage.removeItem(TAG_STORAGE_KEY);
+        toast(`Migrated ${macs.length} tag${macs.length > 1 ? 's' : ''} to masterETH`, 'ok');
+      }
+    }
+  } catch (e) {
+    // Server unreachable on first load — degrade to localStorage so the
+    // SPA still renders a sensible label set during a temporary outage.
+    try { tagStore = JSON.parse(localStorage.getItem(TAG_STORAGE_KEY) || '{}'); }
+    catch (err) { tagStore = {}; }
+  }
+}
+
+// ── Sparklines ───────────────────────────────────────────────────────────────
+//
+// Tiny line charts driven from nodeStatusCache.history. No external dep —
+// just the 2D canvas API. Pulled into the Detail page's Identity tab.
+
+function drawSparkline(canvas, values, opts = {}) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  // CSS sizing is set on the element; backing-store size is the native
+  // resolution scaled by dpr for sharp rendering on hi-DPI screens.
+  const w = canvas.clientWidth  * dpr;
+  const h = canvas.clientHeight * dpr;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width  = w;
+    canvas.height = h;
+  }
+  ctx.clearRect(0, 0, w, h);
+  if (!values || values.length === 0) return;
+
+  const min = opts.min !== undefined ? opts.min : Math.min(...values);
+  let   max = opts.max !== undefined ? opts.max : Math.max(...values);
+  if (max - min < 1e-6) max = min + 1;   // flat line
+
+  const pad = 2 * dpr;
+  const stepX = (w - 2 * pad) / Math.max(1, values.length - 1);
+  const scaleY = (h - 2 * pad) / (max - min);
+
+  ctx.strokeStyle = opts.color || '#5eead4';   // accent2 fallback
+  ctx.lineWidth   = 1.5 * dpr;
+  ctx.lineJoin    = 'round';
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = pad + i * stepX;
+    const y = h - pad - (v - min) * scaleY;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  if (opts.fill) {
+    ctx.lineTo(pad + (values.length - 1) * stepX, h - pad);
+    ctx.lineTo(pad, h - pad);
+    ctx.closePath();
+    ctx.fillStyle = opts.fill;
+    ctx.fill();
+  }
+}
+
+function refreshSparklines(mac) {
+  const cache = nodeStatusCache.get(mac);
+  if (!cache || !cache.history.length) return;
+  const heap = cache.history.map(h => h.heap);
+  const a    = cache.history.map(h => h.a);
+  const b    = cache.history.map(h => h.b);
+  drawSparkline($('sparkHeap'), heap, { color: '#5eead4', min: 0 });
+  drawSparkline($('sparkA'),    a,    { color: '#22cc77', min: 0 });
+  drawSparkline($('sparkB'),    b,    { color: '#22cc77', min: 0 });
+
+  const last = cache.history[cache.history.length - 1];
+  const setText = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+  setText('sparkHeapVal', `${(last.heap / 1024).toFixed(1)} KB`);
+  setText('sparkAVal',    `${last.a} pkt/s`);
+  setText('sparkBVal',    `${last.b} pkt/s`);
+}
+
+// ── Status poller ────────────────────────────────────────────────────────────
+//
+// Background fetch of /api/status from every compatible+online node.
+// Parallel across nodes (each node has its own webServer listener) but
+// per-node-serialized via nodeApi's queue. Maintains a rolling history
+// for sparklines and a current snapshot for at-a-glance views.
+//
+// Runs on a fixed 5 s tick from SPA boot, independent of which page the
+// user is on — keeps the Nodes list and System aggregate up-to-date
+// regardless of recent navigation.
+
+const STATUS_POLL_MS         = 5000;
+const STATUS_HISTORY_MAX     = 60;     // ~5 minutes of samples at 5 s
+const nodeStatusCache = new Map();     // mac -> { lastFetch, data, history[] }
+const statusUpdateHooks = new Set();   // fns called after each tick
+function onStatusUpdate(fn) { statusUpdateHooks.add(fn); return () => statusUpdateHooks.delete(fn); }
+
+async function pollOneNodeStatus(n) {
+  try {
+    const data = await nodeApi('GET', n.ip, '/api/status');
+    const cache = nodeStatusCache.get(n.mac) || { history: [] };
+    cache.lastFetch = Date.now();
+    cache.data      = data;
+    cache.history.push({
+      t: cache.lastFetch,
+      a: data.portARate || 0,
+      b: data.portBRate || 0,
+      heap: data.freeHeap || 0,
+    });
+    while (cache.history.length > STATUS_HISTORY_MAX) cache.history.shift();
+    nodeStatusCache.set(n.mac, cache);
+  } catch(e) {
+    // Transient failure (node mid-reboot, packet loss, etc). Leave the
+    // last-known data in place — the UI will show it as stale via the
+    // lastFetch timestamp, not as a hard error.
+  }
+}
+
+let _statusPollerArmed = false;
+async function statusPollerTick() {
+  // Pull the current registry from masterETH, then poll every compatible+online node.
+  let registry;
+  try { registry = (await api('GET', '/api/nodes')).nodes || []; }
+  catch(_) { return; }
+  const targets = registry.filter(n => n.compat === 'compatible' && n.online);
+  await Promise.all(targets.map(pollOneNodeStatus));
+  statusUpdateHooks.forEach(fn => { try { fn(); } catch(_) {} });
+}
+function startStatusPoller() {
+  if (_statusPollerArmed) return;
+  _statusPollerArmed = true;
+  statusPollerTick();
+  setInterval(statusPollerTick, STATUS_POLL_MS);
+}
+
+// ── Nodes page ───────────────────────────────────────────────────────────────
+
+let cachedNodes = [];
+let searchQuery = '';
+let selectedMacs = new Set();   // bulk-ops selection on the Nodes list
+
+function shortMode(s) {
+  if (!s) return '';
+  if (s.includes('RDM'))    return 'RDM';
+  if (s.includes('input'))  return 'DMX in';
+  if (s.includes('WS2812')) return 'Pixels';
+  if (s.includes('output')) return 'DMX out';
+  return s;
+}
+
+function liveStrip(n) {
+  // Per-row activity strip: pulled from the cached /api/status snapshot.
+  // Empty string when no data yet — the row still renders cleanly with
+  // just the registry fields.
+  if (n.compat !== 'compatible' || !n.online) return '';
+  const cache = nodeStatusCache.get(n.mac);
+  if (!cache || !cache.data) return '';
+  const s = cache.data;
+  const aActive = (s.portARate || 0) > 0;
+  const bActive = (s.portBRate || 0) > 0;
+  return `
+    <div class="live-strip">
+      <span class="port"><span class="ldot${aActive ? ' active' : ''}"></span>
+        <span class="m">A · ${esc(shortMode(s.portAStatus))}</span>
+        <span class="r">${s.portARate || 0}/s</span></span>
+      <span class="port"><span class="ldot${bActive ? ' active' : ''}"></span>
+        <span class="m">B · ${esc(shortMode(s.portBStatus))}</span>
+        <span class="r">${s.portBRate || 0}/s</span></span>
+    </div>`;
+}
+
+function nodeMatchesSearch(n, q) {
+  if (!q) return true;
+  const ql = q.toLowerCase();
+  const fields = [n.nodeName, n.ip, n.deviceType, n.firmwareVersion, getTag(n.mac)]
+    .filter(Boolean).map(s => s.toLowerCase());
+  return fields.some(f => f.includes(ql));
+}
+
+async function renderNodes() {
+  if (currentPage !== 'nodes') return;
+  if (!content.querySelector('.node-list, .empty-state, .node-summary')) {
+    content.innerHTML = '<div class="loading">Discovering nodes…</div>';
+  }
+  let d;
+  try { d = await api('GET', '/api/nodes'); }
+  catch(e) {
+    if (currentPage !== 'nodes') return;
+    content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>';
+    return;
+  }
+  if (currentPage !== 'nodes') return;
+
+  // Preserve the search input's typing state across re-renders so the
+  // 5-second poll tick doesn't yank the cursor mid-query.
+  const prevSearch = $('nodeSearch');
+  const wasFocused = document.activeElement === prevSearch;
+  if (prevSearch) searchQuery = prevSearch.value;
+
+  cachedNodes = (d.nodes || []).filter(n =>
+    n.compat === 'compatible' || n.compat === 'readonly');
+
+  const total    = cachedNodes.length;
+  const online   = cachedNodes.filter(n => n.online).length;
+  const readonly = cachedNodes.filter(n => n.compat === 'readonly').length;
+
+  // Sort: compatible+online → compatible+offline → readonly.
+  const rank = n => {
+    if (n.compat === 'compatible') return n.online ? 0 : 1;
+    return 2;  // readonly
+  };
+  cachedNodes.sort((a, b) => rank(a) - rank(b) || a.ip.localeCompare(b.ip));
+
+  const visible = cachedNodes.filter(n => nodeMatchesSearch(n, searchQuery));
+
+  let html = `
+    <div class="section-header">
+      <div class="section-title">Discovered Nodes</div>
+      <div class="heartbeat" id="hb"><span class="hb-dot"></span><span>Live</span></div>
+    </div>
+
+    <div class="search-bar">
+      <input type="text" id="nodeSearch" placeholder="Search by name, tag, IP, deviceType…  (press / to focus)" value="${esc(searchQuery)}">
+      ${searchQuery ? `<button class="btn-secondary btn-small" id="searchClearBtn">Clear</button>` : ''}
+    </div>
+
+    <div class="node-summary">
+      <span><strong>${online}</strong> online / <strong>${total}</strong> total</span>
+      ${searchQuery && visible.length !== total ? `<span class="sep">·</span><span><strong>${visible.length}</strong> matching</span>` : ''}
+      ${readonly ? `<span class="sep">·</span><span class="needs-update"><strong>${readonly}</strong> need v7.4 firmware</span>` : ''}
+      <span style="margin-left:auto"><button class="btn-secondary btn-small" id="refreshBtn">Refresh</button></span>
+    </div>
+    ${renderBulkBar()}`;
+
+  if (!cachedNodes.length) {
+    html += `<div class="empty-state">
+      No expanseElectronics nodes discovered yet. masterETH broadcasts an
+      Art-Net poll every 5 seconds.<br>
+      Make sure your nodes are powered on and on the same broadcast domain.
+    </div>`;
+  } else if (!visible.length) {
+    html += `<div class="empty-state">No nodes match "<strong>${esc(searchQuery)}</strong>".</div>`;
+  } else {
+    html += '<div class="node-list">' + visible.map(n => {
+      let dotClass = '';
+      if (n.compat === 'compatible') dotClass = n.online ? 'ok' : 'warn';
+      else if (n.compat === 'readonly') dotClass = 'warn';
+      const tag = getTag(n.mac);
+      const displayName = tag || n.nodeName;
+      const checked = selectedMacs.has(n.mac) ? 'checked' : '';
+      return `
+      <div class="node-row ${n.online ? '' : 'offline'}" data-ip="${esc(n.ip)}" data-mac="${esc(n.mac)}" tabindex="0">
+        <input type="checkbox" class="node-select" data-mac="${esc(n.mac)}" ${checked} title="Select for bulk action">
+        <span class="dot ${dotClass}"></span>
+        <div class="row-body">
+          <div class="name">${
+            displayName
+              ? esc(displayName)
+              : '<span class="unidentified">' + esc(n.ip) + '</span>'
+          }${tag && n.nodeName ? ' <span class="real-name">(' + esc(n.nodeName) + ')</span>' : ''}${n.compat !== 'compatible' ? ' ' + compatTag(n.compat) : ''}</div>
+          <div class="meta">
+            <span class="ip">${esc(n.ip)}</span>
+            ${n.deviceType ? '<span>' + esc(n.deviceType) + '</span>' : ''}
+            ${n.firmwareVersion ? '<span>' + esc(n.firmwareVersion) + '</span>' : ''}
+            <span>${n.online ? 'online' : 'offline · seen ' + n.lastSeenSecondsAgo + 's ago'}</span>
+          </div>
+          ${liveStrip(n)}
+        </div>
+        <span class="arrow">›</span>
+      </div>
+    `;
+    }).join('') + '</div>';
+  }
+
+  content.innerHTML = html;
+
+  // Re-bind dynamic state on the (now fresh) search input
+  const search = $('nodeSearch');
+  if (search) {
+    if (wasFocused) {
+      search.focus();
+      // keep cursor at end after innerHTML rebuild
+      const v = search.value; search.value = ''; search.value = v;
+    }
+    search.addEventListener('input', () => {
+      searchQuery = search.value;
+      renderNodes();
+    });
+  }
+  $('searchClearBtn')?.addEventListener('click', () => {
+    searchQuery = '';
+    renderNodes();
+    $('nodeSearch')?.focus();
+  });
+
+  // Row clicks (only when the click didn't originate on the checkbox).
+  content.querySelectorAll('.node-row').forEach(row => {
+    row.addEventListener('click', e => {
+      if (e.target.classList.contains('node-select')) return;
+      location.hash = '#node/' + row.dataset.ip;
+    });
+  });
+
+  // Checkbox toggling — keeps selection in sync, re-renders bulk bar.
+  content.querySelectorAll('.node-select').forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation());
+    cb.addEventListener('change', () => {
+      const mac = cb.dataset.mac;
+      if (cb.checked) selectedMacs.add(mac); else selectedMacs.delete(mac);
+      // Re-render only the bulk bar instead of the whole list — keeps the
+      // checkbox states stable and avoids losing focus.
+      const bar = $('bulkBar');
+      const wrap = document.createElement('div');
+      wrap.innerHTML = renderBulkBar();
+      const fresh = wrap.firstElementChild;
+      if (bar && fresh) {
+        bar.replaceWith(fresh);
+      } else if (bar && !fresh) {
+        bar.remove();    // selection cleared
+      } else if (!bar && fresh) {
+        const list = content.querySelector('.node-list, .empty-state');
+        if (list) list.parentElement.insertBefore(fresh, list);
+      }
+      wireBulkBar();
+    });
+  });
+  wireBulkBar();
+
+  $('refreshBtn')?.addEventListener('click', async () => {
+    try {
+      await api('POST', '/api/nodes/refresh');
+      toast('Refresh queued');
+    } catch(e) { toast('Refresh failed', 'err'); }
+  });
+
+  const hb = $('hb');
+  if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
+}
+
+// ── Bulk operations on the Nodes list ────────────────────────────────────────
+
+function renderBulkBar() {
+  if (selectedMacs.size === 0) return '';
+  return `
+    <div class="bulk-bar" id="bulkBar">
+      <span class="count">${selectedMacs.size}</span> selected
+      <button class="btn btn-secondary btn-small" id="bulkRebootBtn">Reboot</button>
+      <button class="btn btn-secondary btn-small" id="bulkUniversesBtn">Set sequential universes…</button>
+      <button class="btn btn-secondary btn-small" id="bulkTagBtn">Tag…</button>
+      <span class="spacer"></span>
+      <button class="btn btn-secondary btn-small" id="bulkClearBtn">Clear</button>
+    </div>`;
+}
+
+function selectedNodes() {
+  return cachedNodes.filter(n => selectedMacs.has(n.mac));
+}
+
+function wireBulkBar() {
+  $('bulkClearBtn')?.addEventListener('click', () => {
+    selectedMacs.clear();
+    renderNodes();
+  });
+
+  $('bulkRebootBtn')?.addEventListener('click', async () => {
+    const targets = selectedNodes();
+    if (!targets.length) return;
+    if (!confirm(`Reboot ${targets.length} node${targets.length > 1 ? 's' : ''}? Each will be unreachable for ~5 s.`)) return;
+    let ok = 0, fail = 0;
+    for (const n of targets) {
+      try { await nodeApi('POST', n.ip, '/api/reboot', {}); ok++; }
+      catch (e) { fail++; }
+    }
+    toast(`Reboot sent to ${ok} node${ok !== 1 ? 's' : ''}` + (fail ? `, ${fail} failed` : ''), fail ? 'warn' : 'ok');
+    selectedMacs.clear();
+    setTimeout(() => renderNodes(), 5500);
+  });
+
+  $('bulkUniversesBtn')?.addEventListener('click', async () => {
+    const targets = selectedNodes().filter(n => n.compat === 'compatible');
+    if (!targets.length) { toast('No editable (compatible) nodes selected', 'err'); return; }
+    const startNet      = parseInt(prompt('Starting Net (0–127):', '0'), 10);
+    if (Number.isNaN(startNet)) return;
+    const startSubnet   = parseInt(prompt('Starting Subnet (0–15):', '0'), 10);
+    if (Number.isNaN(startSubnet)) return;
+    const startUniverse = parseInt(prompt('Starting Universe (0–15):', '0'), 10);
+    if (Number.isNaN(startUniverse)) return;
+
+    // Walk net.subnet.universe across selected nodes' Port A then Port B.
+    let net = startNet, subnet = startSubnet, universe = startUniverse;
+    const advance = () => {
+      universe++;
+      if (universe > 15) { universe = 0; subnet++; }
+      if (subnet > 15)   { subnet   = 0; net++; }
+      if (net > 127)     { net      = 0; }
+    };
+    let ok = 0, fail = 0;
+    for (const n of targets) {
+      for (const port of ['A', 'B']) {
+        try {
+          const cfg = await nodeApi('GET', n.ip, '/api/ports/' + port);
+          // Mutate only addressing fields. The dualETH POST handler accepts
+          // partial bodies, but echoing back the GET shape is robust.
+          cfg.net      = net;
+          cfg.subnet   = subnet;
+          cfg.universe = [universe, ...(cfg.universe || []).slice(1)];
+          await nodeApi('POST', n.ip, '/api/ports/' + port, cfg);
+          ok++;
+          advance();
+        } catch (e) {
+          fail++;
+          advance();
+        }
+      }
+    }
+    toast(`Universes set on ${ok} port${ok !== 1 ? 's' : ''}` + (fail ? `, ${fail} failed` : '') + ' — reboot nodes to apply', fail ? 'warn' : 'ok', 6000);
+    renderNodes();
+  });
+
+  $('bulkTagBtn')?.addEventListener('click', async () => {
+    const targets = selectedNodes();
+    if (!targets.length) return;
+    const tag = prompt(`Apply tag to ${targets.length} node${targets.length > 1 ? 's' : ''}? Leave blank to clear.`, '');
+    if (tag === null) return;
+    let ok = 0, fail = 0;
+    for (const n of targets) {
+      try { await setTag(n.mac, tag); ok++; }
+      catch (e) { fail++; }
+    }
+    toast(`Tagged ${ok} node${ok !== 1 ? 's' : ''}` + (fail ? `, ${fail} failed` : ''), fail ? 'warn' : 'ok');
+    renderNodes();
+  });
+}
+
+// ── Node detail ──────────────────────────────────────────────────────────────
+
+async function renderNodeDetail(ip, tab) {
+  tab = tab || 'identity';
+  // Refresh registry first to get freshest data for this node
+  let nodes;
+  try { nodes = (await api('GET', '/api/nodes')).nodes || []; }
+  catch(e) {
+    if (currentPage !== 'node-detail') return;
+    content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>';
+    return;
+  }
+  if (currentPage !== 'node-detail') return;
+
+  const n = nodes.find(x => x.ip === ip);
+  if (!n) {
+    content.innerHTML = `
+      <div class="section-title">Node Detail</div>
+      <div class="error-msg">No node currently registered at ${esc(ip)}.</div>
+      <div class="btn-row"><a href="#nodes" class="btn btn-secondary">← Back to nodes</a></div>`;
+    return;
+  }
+
+  // Configuration tab is only meaningful for compatible nodes (readonly
+  // v7.3 nodes can't accept POSTs cross-origin). If the URL says config
+  // but the node can't take it, fall back to identity silently.
+  const configAvailable = n.compat === 'compatible';
+  if (tab === 'config' && !configAvailable) tab = 'identity';
+
+  const onlineSv  = n.online ? `<span class="dot ok"></span> Online` : `<span class="dot"></span> Offline · seen ${n.lastSeenSecondsAgo}s ago`;
+  const onlineCls = n.online ? 'ok' : 'dim';
+
+  const tag = getTag(n.mac);
+  const headerName = tag || n.nodeName || n.ip;
+  content.innerHTML = `
+    <div class="section-header">
+      <div style="display:flex;align-items:baseline;flex-wrap:wrap">
+        <div class="section-title">${esc(headerName)}</div>
+        <span class="tag-editor">
+          ${tag
+            ? `<span class="current">${esc(tag)}</span><button class="pencil" id="tagEditBtn" title="Edit label">edit</button>`
+            : `<button class="pencil" id="tagEditBtn" title="Set a local label for this node">+ tag</button>`}
+        </span>
+        ${tag && n.nodeName ? `<span style="margin-left:10px;font-size:12px;color:var(--text-dim)">node name: <span style="font-family:var(--mono)">${esc(n.nodeName)}</span></span>` : ''}
+      </div>
+      <div style="display:flex;gap:8px">
+        <a href="#nodes" class="btn btn-secondary btn-small">← Nodes</a>
+        ${(n.compat === 'compatible' || n.compat === 'readonly')
+          ? `<a class="btn btn-primary btn-small" href="http://${esc(n.ip)}/" target="_blank" rel="noreferrer">Open node UI →</a>`
+          : ''}
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn ${tab === 'identity' ? 'active' : ''}" data-tab="identity">Identity</button>
+      ${configAvailable
+        ? `<button class="tab-btn ${tab === 'config' ? 'active' : ''}" data-tab="config">Configuration</button>`
+        : ''}
+    </div>
+
+    <div class="tab-pane" data-tab="identity" style="${tab === 'identity' ? '' : 'display:none'}">
+      <div class="subsection">
+        <div class="section-section-title">Identity</div>
+        <div class="status-grid">
+          <div class="sk">Status</div>          <div class="sv ${onlineCls}">${onlineSv}</div>
+          <div class="sk">IP Address</div>      <div class="sv">${esc(n.ip)}</div>
+          <div class="sk">MAC Address</div>     <div class="sv">${esc(n.mac)}</div>
+          <div class="sk">Node Name</div>       <div class="sv">${esc(n.nodeName) || '<span class="dim">—</span>'}</div>
+          <div class="sk">Device Type</div>     <div class="sv">${esc(n.deviceType) || '<span class="dim">—</span>'}</div>
+          <div class="sk">Firmware</div>        <div class="sv">${esc(n.firmwareVersion) || '<span class="dim">—</span>'}</div>
+          <div class="sk">Compatibility</div>   <div class="sv">${compatTag(n.compat)}</div>
+        </div>
+      </div>
+
+      <div id="hardwareSection">
+        ${(n.compat === 'compatible' || n.compat === 'readonly')
+          ? '<div class="subsection"><div class="section-section-title">Hardware</div><div class="loading" style="padding:16px 0">Fetching live identify…</div></div>'
+          : ''}
+      </div>
+
+      ${(n.compat === 'compatible' || n.compat === 'readonly') ? `
+      <div class="subsection" id="trendsSection">
+        <div class="section-section-title">Live trends · last 5 min</div>
+        <div class="status-grid" style="grid-template-columns: 160px 1fr">
+          <div class="sk">Free heap</div>
+          <div class="sv"><canvas id="sparkHeap" width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="sparkHeapVal"></span></div>
+          <div class="sk">Port A pkt/s</div>
+          <div class="sv"><canvas id="sparkA"    width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="sparkAVal"></span></div>
+          <div class="sk">Port B pkt/s</div>
+          <div class="sv"><canvas id="sparkB"    width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="sparkBVal"></span></div>
+        </div>
+      </div>` : ''}
+
+      ${n.compat === 'readonly' ? `
+        <div class="subsection">
+          <div class="section-section-title">Read-only · Needs v7.4 firmware</div>
+          <p style="font-size:13px;color:var(--text-dim)">
+            This node is on <strong>${esc(n.firmwareVersion)}</strong>, which works for
+            discovery but not for cross-origin writes from masterETH (CORS landed in v7.4).
+            Flash to v7.4+ via the
+            <a href="https://expanseelectronics.com/updater" target="_blank" rel="noreferrer">updater</a>
+            to enable inline editing here.
+          </p>
+        </div>` : ''}
+
+      ${n.compat === 'incompatible' ? `
+        <div class="subsection">
+          <div class="section-section-title">Incompatible</div>
+          <p style="font-size:13px;color:var(--text-dim)">
+            This node responded to Art-Net but doesn't expose the
+            <code>/api/identify</code> endpoint, or returned a non-expanseElectronics vendor.
+          </p>
+        </div>` : ''}
+
+      ${n.compat === 'unknown' ? `
+        <div class="subsection">
+          <div class="section-section-title">Unknown</div>
+          <p style="font-size:13px;color:var(--text-dim)">
+            masterETH has detected this device via Art-Net but can't reach it on TCP port 80.
+            Likely a third-party Art-Net node or a software sender.
+          </p>
+        </div>` : ''}
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="locateBtn" data-ip="${esc(n.ip)}">Locate (flash LED)</button>
+        <a class="btn btn-secondary" href="http://${esc(n.ip)}/api/identify" target="_blank" rel="noreferrer">Raw /api/identify</a>
+      </div>
+    </div>
+
+    ${configAvailable ? `
+    <div class="tab-pane" data-tab="config" style="${tab === 'config' ? '' : 'display:none'}">
+      <div id="editForms">
+        <div class="loading" style="padding:24px 0">Fetching node config…</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-danger" id="rebootNodeBtn">Reboot Node</button>
+      </div>
+    </div>` : ''}`;
+
+  // Wire tab buttons. Switching is purely DOM toggle — no re-fetch, no
+  // re-render — and updates the URL via replaceState so reload returns
+  // to the same tab without putting it in the back/forward history (Back
+  // should go to the nodes list, not the previous tab).
+  content.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchDetailTab(btn.dataset.tab, n.ip));
+  });
+
+  // Tag editor — uses prompt() for v0.1 simplicity. A nicer inline-edit
+  // can come later; the data model and storage are already in place.
+  $('tagEditBtn')?.addEventListener('click', async () => {
+    const current = getTag(n.mac);
+    const next = prompt(
+      'Label for this node (stored on masterETH).\n' +
+      'Leave blank to remove.',
+      current);
+    if (next === null) return;  // cancelled
+    try {
+      await setTag(n.mac, next.trim());
+      toast(next.trim() ? 'Tag saved' : 'Tag removed');
+      renderNodeDetail(n.ip, tab);  // re-render to show the new tag
+    } catch (e) { /* setTag already toasted */ }
+  });
+
+  // Compatible nodes get the live identify fetch (for the Identity tab's
+  // Hardware block) and the editable config (for the Configuration tab).
+  // Readonly nodes get only the identify fetch.
+  if (n.compat === 'compatible' || n.compat === 'readonly') {
+    await fetchLiveIdentifyWithResync(n);
+  }
+  if (currentPage !== 'node-detail') return;
+  wireLocateButton();
+  // Initial sparkline paint from any cached history. Subsequent updates
+  // arrive via the onStatusUpdate hook below.
+  refreshSparklines(n.mac);
+  if (configAvailable) {
+    await wireEditForms(n);
+    if (currentPage !== 'node-detail') return;
+    wireRebootButton(n);
+  }
+}
+
+function switchDetailTab(tab, ip) {
+  content.querySelectorAll('.tab-pane').forEach(el => {
+    el.style.display = el.dataset.tab === tab ? '' : 'none';
+  });
+  content.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  const newHash = '#node/' + ip + (tab === 'identity' ? '' : '/' + tab);
+  if (location.hash !== newHash) history.replaceState(null, '', newHash);
+}
+
+// Live-identify with two robustness behaviors layered on:
+//   1. If the node has moved IP (the URL is stale), re-query the
+//      masterETH registry by MAC and follow the move transparently —
+//      DHCP renewals or static-IP reconfigures shouldn't strand the
+//      user on a dead detail page.
+//   2. Render the error UI with a Retry button on failure rather than
+//      leaving the user with a dead-end message.
+async function fetchLiveIdentifyWithResync(n) {
+  let id;
+  try { id = await nodeApi('GET', n.ip, '/api/identify'); }
+  catch(e) {
+    if (currentPage !== 'node-detail') return;
+
+    // Maybe the node just moved IP. Re-query masterETH's registry by
+    // MAC and, if a fresh entry exists at a new IP, redirect the hash
+    // to follow it. The masterETH registry is MAC-keyed exactly to
+    // make this graceful.
+    try {
+      const fresh = (await api('GET', '/api/nodes')).nodes || [];
+      const moved = fresh.find(x => x.mac === n.mac && x.ip !== n.ip);
+      if (moved) {
+        toast('Node moved to ' + moved.ip + ' — following', 'warn');
+        location.hash = '#node/' + moved.ip;
+        return;
+      }
+    } catch(_) { /* registry unreachable too — fall through to retry UI */ }
+
+    if (currentPage !== 'node-detail') return;
+    const slot = $('hardwareSection');
+    if (slot) {
+      slot.innerHTML = `
+        <div class="subsection">
+          <div class="section-section-title">Hardware</div>
+          <p style="font-size:13px;color:var(--err)">Could not fetch live identify from node (${esc(e.message)}).</p>
+          <div class="btn-row"><button class="btn-secondary btn-small" id="retryIdentifyBtn">Retry</button></div>
+        </div>`;
+      const btn = $('retryIdentifyBtn');
+      if (btn) btn.addEventListener('click', () => fetchLiveIdentifyWithResync(n));
+    }
+    return;
+  }
+  if (currentPage !== 'node-detail') return;
+
+  renderHardwareSection(id);
+}
+
+// ── Node edit forms (compatible nodes only) ──────────────────────────────────
+
+const PORT_MODES = [
+  { v: 0, label: 'DMX Output' },
+  { v: 1, label: 'DMX Output + RDM' },
+  { v: 2, label: 'DMX Input' },
+  { v: 3, label: 'WS2812 Pixels' },
+];
+const PORT_MODE_WS2812 = 3;
+const PROTOCOLS = [
+  { v: 0, label: 'Art-Net' },
+  { v: 1, label: 'Art-Net + sACN' },
+];
+const MERGE_MODES = [
+  { v: 0, label: 'LTP (Last Takes Priority)' },
+  { v: 1, label: 'HTP (Highest Takes Priority)' },
+];
+const PIXEL_MODES = [
+  { v: 0, label: 'Pixel Mapping' },
+  { v: 1, label: '12-Channel FX' },
+];
+
+function selectOptions(items, selected) {
+  return items.map(i => `<option value="${i.v}" ${i.v === selected ? 'selected' : ''}>${esc(i.label)}</option>`).join('');
+}
+
+// Per-port cache of the GET response, keyed by port letter ('A'/'B').
+// Stashed at form-render time so the submit handler can pass through
+// fields the masterETH UI doesn't expose (sACN universes, DMX-in
+// broadcast, FX12 start channel, universes 1–3) without zeroing the
+// user's prior config. Reset between detail-page renders.
+const portCfgCache = {};
+
+// Async-fetch a port's current config for the form's initial state.
+// Falls back gracefully if the node is briefly unreachable — the form
+// just won't pre-populate (user sees zero-default fields).
+async function fetchPortConfig(ip, port) {
+  try { return await nodeApi('GET', ip, '/api/ports/' + port); }
+  catch(e) { return null; }
+}
+
+async function fetchNetworkConfig(ip) {
+  try { return await nodeApi('GET', ip, '/api/network'); }
+  catch(e) { return null; }
+}
+
+// Wire up all edit forms after the detail page has rendered. Compatible
+// nodes only — readonly/unknown/incompatible never reach this code path.
+async function wireEditForms(n) {
+  // Reset the per-port cfg cache each time we render a detail page —
+  // otherwise a stale entry from a previous node would leak into the
+  // pass-through merge on save.
+  portCfgCache.A = null;
+  portCfgCache.B = null;
+  const slot = $('editForms');
+  if (!slot) return;
+
+  // Loading skeleton — these forms need data from the node, fetched
+  // cross-origin. Each takes one round-trip.
+  slot.innerHTML = `
+    <div class="subsection">
+      <div class="section-section-title">Node Name</div>
+      <div class="loading" style="padding:8px 0">Fetching node config…</div>
+    </div>`;
+
+  // Serialize. The dualETH's webServer is single-listener / single-
+  // socket — while it's processing one HTTP request, the listening
+  // socket is busy and parallel connect attempts are TCP-refused
+  // before they make it into the server's request queue. Browsers
+  // surface that as a fetch error ("Load failed" in Safari) without
+  // any logged response. Doing each fetch in turn (~10 ms apiece on
+  // a healthy LAN) costs ~30 ms total but actually completes.
+  const net   = await fetchNetworkConfig(n.ip);
+  if (currentPage !== 'node-detail') return;
+  const portA = await fetchPortConfig(n.ip, 'A');
+  if (currentPage !== 'node-detail') return;
+  const portB = await fetchPortConfig(n.ip, 'B');
+  if (currentPage !== 'node-detail') return;
+
+  if (!net && !portA && !portB) {
+    slot.innerHTML = `
+      <div class="subsection">
+        <div class="section-section-title">Edit</div>
+        <p style="font-size:13px;color:var(--err)">Could not fetch node config.
+        The node may be temporarily unreachable; reload to retry.</p>
+      </div>`;
+    return;
+  }
+
+  slot.innerHTML = `
+    ${net ? renderNetworkForm(n, net) : ''}
+    ${portA ? renderPortForm(n, 'A', portA) : ''}
+    ${portB ? renderPortForm(n, 'B', portB) : ''}`;
+
+  if (net)   wireNetworkForm(n);
+  if (portA) wirePortForm(n, 'A');
+  if (portB) wirePortForm(n, 'B');
+}
+
+function renderNetworkForm(n, net) {
+  return `
+    <div class="config-section">
+      <div class="config-section-title">Node Name</div>
+      <form id="netEditForm">
+        <div class="status-grid">
+          <div class="sk">Node Name</div>
+          <div class="sv"><input type="text" name="nodeName" value="${esc(net.nodeName || '')}" maxlength="17"></div>
+        </div>
+        <div class="btn-row">
+          <button type="submit" class="btn-primary">Save</button>
+          <span class="save-status" id="netEditStatus"></span>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-top:8px">
+          Static IP / DHCP / gateway editing is in the
+          <a href="http://${esc(n.ip)}/" target="_blank" rel="noreferrer">node's own UI</a>
+          — risky settings benefit from on-device validation.
+        </p>
+      </form>
+    </div>`;
+}
+
+function modeLabel(mode) {
+  const m = PORT_MODES.find(x => x.v === mode);
+  return m ? m.label : 'Unknown';
+}
+
+function renderPortForm(n, port, cfg) {
+  // Stash the full cfg so the submit handler can preserve fields the
+  // form doesn't expose (see portCfgCache comment above).
+  portCfgCache[port] = cfg;
+  const isPortA = port === 'A';
+  const modes = isPortA ? PORT_MODES : PORT_MODES.filter(m => m.v !== 1 && m.v !== 2);
+  const isWS = cfg.mode === PORT_MODE_WS2812;
+  const portIdSuffix = port.toLowerCase();
+  return `
+    <div class="config-section">
+      <div class="port-heading">
+        <span class="port-label">Port ${esc(port)}</span>
+        <span class="port-mode" id="port${esc(port)}ModeTag">${esc(modeLabel(cfg.mode))}</span>
+      </div>
+      <form id="port${esc(port)}EditForm" data-port="${esc(port)}">
+        <div class="status-grid">
+          <div class="sk">Mode</div>
+          <div class="sv"><select name="mode" data-port-mode="${esc(port)}">${selectOptions(modes, cfg.mode)}</select></div>
+          <div class="sk">Protocol</div>
+          <div class="sv"><select name="protocol">${selectOptions(PROTOCOLS, cfg.protocol)}</select></div>
+          <div class="sk">Merge</div>
+          <div class="sv"><select name="merge">${selectOptions(MERGE_MODES, cfg.merge)}</select></div>
+          <div class="sk">Net</div>
+          <div class="sv"><input type="number" name="net" value="${cfg.net || 0}" min="0" max="127"></div>
+          <div class="sk">Subnet</div>
+          <div class="sv"><input type="number" name="subnet" value="${cfg.subnet || 0}" min="0" max="15"></div>
+          <div class="sk">Universe</div>
+          <div class="sv"><input type="number" name="universe" value="${(cfg.universe && cfg.universe[0]) || 0}" min="0" max="15"></div>
+        </div>
+        <div id="ws-${portIdSuffix}-rows" style="margin-top:14px${isWS ? '' : ';display:none'}">
+          <div class="section-section-title">WS2812</div>
+          <div class="status-grid">
+            <div class="sk">Pixel Count</div>
+            <div class="sv">
+              <input type="number" name="numPixels" value="${cfg.numPixels || 0}" min="0" max="680">
+              <span class="hint">max 680 (170/universe)</span>
+            </div>
+            <div class="sk">Pixel Mode</div>
+            <div class="sv"><select name="pixelMode">${selectOptions(PIXEL_MODES, cfg.pixelMode || 0)}</select></div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="submit" class="btn-primary">Save Port ${esc(port)}</button>
+          <span class="save-status" id="port${esc(port)}EditStatus"></span>
+          <span id="port${esc(port)}RebootHint" style="display:none;font-size:12px;color:var(--warn)">Reboot to apply</span>
+        </div>
+      </form>
+    </div>`;
+}
+
+function wireNetworkForm(n) {
+  const f = $('netEditForm');
+  if (!f) return;
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    const newName = f.nodeName.value;
+    try {
+      const r = await nodeApi('POST', n.ip, '/api/network', { nodeName: newName });
+      if (r.success === false) throw new Error(r.error || 'unknown');
+      // Optimistic — patch the cached registry row so the Nodes list
+      // and detail header reflect the new name immediately, without
+      // waiting for the next 5-second masterETH sweep + node reprobe.
+      const row = cachedNodes.find(c => c.ip === n.ip);
+      if (row) row.nodeName = newName;
+      n.nodeName = newName;
+      const headerEl = document.querySelector('#content .section-header .section-title');
+      if (headerEl) headerEl.textContent = newName || n.ip;
+      showSaved('netEditStatus');
+      toast('Node name saved');
+    } catch(err) {
+      toast('Save failed: ' + err.message, 'err');
+    }
+  });
+}
+
+function wirePortForm(n, port) {
+  const f = document.getElementById('port' + port + 'EditForm');
+  if (!f) return;
+
+  // Mode change toggles the WS2812-only row group AND updates the port
+  // heading's mode tag so the user sees the new selection take effect
+  // visually before they save.
+  const portIdSuffix = port.toLowerCase();
+  f.querySelector('[data-port-mode]').addEventListener('change', function() {
+    const m = parseInt(this.value, 10);
+    const wsRows = document.getElementById('ws-' + portIdSuffix + '-rows');
+    if (wsRows) wsRows.style.display = m === PORT_MODE_WS2812 ? '' : 'none';
+    const tag = document.getElementById('port' + port + 'ModeTag');
+    if (tag) tag.textContent = modeLabel(m);
+  });
+
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    const mode = parseInt(f.mode.value, 10);
+    const u = parseInt(f.universe.value, 10) || 0;
+    // Pass-through baseline: start from the cached GET response and
+    // only override the fields the form actually exposes. Preserves any
+    // out-of-UI configuration (FX12 start channel, custom sACN per-
+    // universe values, DMX-in broadcast IP, universes 1–3) that the
+    // user set via the node's own admin UI.
+    const cached = portCfgCache[port] || {};
+    const body = {
+      ...cached,
+      mode,
+      protocol: parseInt(f.protocol.value, 10),
+      merge:    parseInt(f.merge.value, 10),
+      net:      parseInt(f.net.value, 10),
+      subnet:   parseInt(f.subnet.value, 10),
+    };
+    // Universe[0] is the form input; 1–3 are pass-through if cached,
+    // else fall back to a sequential spread (sane default for first-
+    // ever WS2812 setup on a fresh node).
+    const cachedUni = Array.isArray(cached.universe) ? cached.universe : [];
+    body.universe = [
+      Math.min(15, Math.max(0, u)),
+      cachedUni[1] != null ? cachedUni[1] : Math.min(15, u + 1),
+      cachedUni[2] != null ? cachedUni[2] : Math.min(15, u + 2),
+      cachedUni[3] != null ? cachedUni[3] : Math.min(15, u + 3),
+    ];
+    if (mode === PORT_MODE_WS2812) {
+      body.numPixels = parseInt(f.numPixels.value, 10) || 0;
+      body.pixelMode = parseInt(f.pixelMode.value, 10) || 0;
+      // pixelFXstart stays cached — FX12 detail editing is link-out
+      // for v0.1 (per the manager-handover-addendum scope decision).
+    }
+
+    try {
+      const r = await nodeApi('POST', n.ip, '/api/ports/' + port, body);
+      if (r.success === false) throw new Error(r.error || 'unknown');
+      showSaved('port' + port + 'EditStatus');
+      toast('Port ' + port + ' saved');
+      if (r.reboot) {
+        const hint = document.getElementById('port' + port + 'RebootHint');
+        if (hint) hint.style.display = '';
+        const rb = $('rebootNodeBtn');
+        if (rb) {
+          rb.classList.add('btn-danger');
+          rb.textContent = 'Reboot Node — pending changes';
+        }
+      }
+    } catch(err) {
+      toast('Save failed: ' + err.message, 'err');
+    }
+  });
+}
+
+function wireRebootButton(n) {
+  const btn = $('rebootNodeBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!confirm('Reboot ' + (n.nodeName || n.ip) + '? It will be unreachable for ~5 seconds.')) return;
+    btn.disabled = true;
+    try {
+      await nodeApi('POST', n.ip, '/api/reboot', {});
+      toast('Reboot sent — node will be back in ~5 s', 'warn', 6000);
+      setTimeout(() => { location.hash = '#nodes'; }, 6000);
+    } catch(err) {
+      toast('Reboot failed: ' + err.message, 'err');
+      btn.disabled = false;
+    }
+  });
+}
+
+function wireLocateButton() {
+  const btn = $('locateBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const ip = btn.dataset.ip;
+    btn.disabled = true;
+    btn.textContent = 'Flashing…';
+    try {
+      await api('POST', '/api/nodes/locate?ip=' + encodeURIComponent(ip));
+      toast('Watch the node — its activity LED should flicker for ~1.5 s', 'ok');
+    } catch(err) {
+      toast('Locate failed: ' + err.message, 'err');
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Locate (flash LED)';
+      }, 1800);
+    }
+  });
+}
+
+// Render the hardware block from a node's full /api/identify response.
+// Schema-agnostic: handles whatever fields the node sent. Falls back
+// gracefully when fields are missing (older firmware, partial responses).
+function renderHardwareSection(id) {
+  const slot = $('hardwareSection');
+  if (!slot) return;
+  const hw = id.hardware || {};
+
+  // Top-level identity additions not in the cached registry
+  const idRows = [];
+  if (id.chipId)     idRows.push(['Chip ID',         '<code>' + esc(id.chipId) + '</code>']);
+  if (id.apiVersion) idRows.push(['API Version',     esc(id.apiVersion)]);
+  if (id.vendor)     idRows.push(['Vendor',          esc(id.vendor)]);
+
+  // Hardware block
+  const hwRows = [];
+  if (hw.role         != null) hwRows.push(['Role',         esc(hw.role)]);
+  if (hw.ports        != null) hwRows.push(['Ports',        esc(hw.ports)]);
+  if (hw.statusLeds   != null) hwRows.push(['Status LEDs',  esc(hw.statusLeds)]);
+
+  // Render port capabilities table if present
+  let capsHtml = '';
+  if (Array.isArray(hw.portCapabilities) && hw.portCapabilities.length) {
+    capsHtml = `
+      <div class="subsection">
+        <div class="section-section-title">Port Capabilities</div>
+        <div class="status-grid" style="grid-template-columns:90px 1fr 1fr">
+          <div class="sk">Port</div>
+          <div class="sk">Directions</div>
+          <div class="sk">Modes</div>
+          ${hw.portCapabilities.map(p => `
+            <div class="sv" style="background:var(--surface)">${esc(p.port || '?')}</div>
+            <div class="sv">${(p.directions || []).map(d => '<span class="tag">' + esc(d) + '</span>').join(' ')}</div>
+            <div class="sv">${(p.modes || []).map(m => '<span class="tag">' + esc(m) + '</span>').join(' ')}</div>
+          `).join('')}
+        </div>
+      </div>`;
+  }
+
+  let html = '';
+  if (idRows.length) {
+    html += `
+      <div class="subsection">
+        <div class="section-section-title">Identity (Live)</div>
+        <div class="status-grid">
+          ${idRows.map(([k,v]) => `<div class="sk">${esc(k)}</div><div class="sv">${v}</div>`).join('')}
+        </div>
+      </div>`;
+  }
+  if (hwRows.length) {
+    html += `
+      <div class="subsection">
+        <div class="section-section-title">Hardware</div>
+        <div class="status-grid">
+          ${hwRows.map(([k,v]) => `<div class="sk">${esc(k)}</div><div class="sv">${v}</div>`).join('')}
+        </div>
+      </div>`;
+  }
+  html += capsHtml;
+
+  if (!html) {
+    html = `
+      <div class="subsection">
+        <div class="section-section-title">Hardware</div>
+        <p style="font-size:13px;color:var(--text-dim)">Node returned no hardware metadata.</p>
+      </div>`;
+  }
+  slot.innerHTML = html;
+}
+
+// ── Universes page ───────────────────────────────────────────────────────────
+//
+// Aggregates (net, subnet, universe) tuples from every compatible node's
+// port config into a single fleet-wide table, with conflicts highlighted.
+// Pure SPA — no firmware involvement beyond the existing /api/ports/[AB]
+// endpoints on each node.
+
+async function renderUniverses() {
+  content.innerHTML = '<div class="loading">Fetching fleet port configs…</div>';
+
+  let nodesResp;
+  try { nodesResp = await api('GET', '/api/nodes'); }
+  catch (e) { content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>'; return; }
+  const nodes = (nodesResp.nodes || []).filter(n => n.compat === 'compatible' || n.compat === 'readonly');
+
+  // Fetch per-node port configs in parallel-across-nodes (the per-IP queue
+  // serialises within a node). Failures are tolerated — one offline node
+  // doesn't break the whole table.
+  const fetched = await Promise.all(nodes.map(async n => {
+    try {
+      const [a, b] = await Promise.all([
+        nodeApi('GET', n.ip, '/api/ports/A').catch(() => null),
+        nodeApi('GET', n.ip, '/api/ports/B').catch(() => null),
+      ]);
+      return { node: n, A: a, B: b };
+    } catch (e) { return { node: n, A: null, B: null }; }
+  }));
+
+  if (currentPage !== 'universes') return;
+
+  // Aggregate. Key = "<net>.<subnet>.<universe>". Each entry collects all
+  // (node, port) refs hitting that universe so duplicates surface as
+  // conflicts. WS2812 mode can chain multiple universes; we expand from
+  // the universe[] array (or numPixels-derived count) so every consumed
+  // universe is visible.
+  const map = new Map();
+  for (const { node, A, B } of fetched) {
+    for (const [port, cfg] of [['A', A], ['B', B]]) {
+      if (!cfg) continue;
+      const universes = computeConsumedUniverses(cfg);
+      for (const u of universes) {
+        const key = `${cfg.net || 0}.${cfg.subnet || 0}.${u}`;
+        if (!map.has(key)) map.set(key, { net: cfg.net || 0, subnet: cfg.subnet || 0, universe: u, refs: [] });
+        map.get(key).refs.push({ node, port, mode: cfg.mode });
+      }
+    }
+  }
+
+  const rows = Array.from(map.values()).sort((a, b) =>
+    (a.net - b.net) || (a.subnet - b.subnet) || (a.universe - b.universe)
+  );
+  const conflicts = rows.filter(r => r.refs.length > 1).length;
+
+  content.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Universes</div>
+      <button class="btn btn-secondary btn-small" id="universesRefresh">Refresh</button>
+    </div>
+
+    <div class="subsection">
+      <div class="sv dim" style="padding: 0 0 12px 0; max-width: 640px">
+        Universe map across the fleet. Each row is a (Net, Subnet, Universe) tuple
+        and the ports addressing it. Multiple ports on the same tuple are flagged
+        as conflicts ${conflicts ? `<span class="sv err" style="background:none;padding:0">— ${conflicts} found</span>` : ''}.
+      </div>
+      ${rows.length === 0 ? `
+        <div class="empty-state">No compatible nodes have port configs to read yet.</div>` : `
+        <div class="status-grid" style="grid-template-columns: 60px 60px 80px 1fr">
+          <div class="sk" style="font-weight:600">Net</div>
+          <div class="sk" style="font-weight:600">Sub</div>
+          <div class="sk" style="font-weight:600">Universe</div>
+          <div class="sk" style="font-weight:600">Ports · Mode</div>
+          ${rows.map(r => {
+            const cls = r.refs.length > 1 ? 'err' : '';
+            const refs = r.refs.map(x => {
+              const tag = getTag(x.node.mac);
+              const label = tag || x.node.nodeName || x.node.ip;
+              const mode  = modeLabel(x.mode);
+              return `<a href="#node/${esc(x.node.ip)}" style="color:var(--accent)">${esc(label)}:${esc(x.port)}</a> <span class="dim">${esc(mode)}</span>`;
+            }).join(' <span class="dim">·</span> ');
+            return `
+              <div class="sv ${cls}">${r.net}</div>
+              <div class="sv ${cls}">${r.subnet}</div>
+              <div class="sv ${cls}">${r.universe}</div>
+              <div class="sv ${cls}">${refs}</div>`;
+          }).join('')}
+        </div>`}
+    </div>`;
+
+  $('universesRefresh').addEventListener('click', () => renderUniverses());
+}
+
+// Compute the set of universes a port actually consumes. dualETH's port
+// config carries a universe[] array sized for the port's mode — for DMX
+// output that's a single-entry array, for WS2812 chains it's one entry
+// per 170-pixel chunk. We trust whatever the node says is in `universe[]`
+// and only fall back to the single-universe scalar if the array is
+// missing entirely.
+function computeConsumedUniverses(cfg) {
+  if (Array.isArray(cfg.universe) && cfg.universe.length > 0) {
+    // For non-WS2812 modes the array may still be 4 entries long with
+    // only [0] meaningful; constrain by mode.
+    if (cfg.mode === PORT_MODE_WS2812) return cfg.universe.slice();
+    return [cfg.universe[0]];
+  }
+  return [cfg.universe || 0];
+}
+
+// ── Network page ─────────────────────────────────────────────────────────────
+
+async function renderNetwork() {
+  content.innerHTML = '<div class="loading">Fetching network config…</div>';
+  let d;
+  try { d = await api('GET', '/api/network'); }
+  catch(e) { content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>'; return; }
+
+  const fb = d.dhcpFallback || {};
+  const modeMap = {
+    'dhcp-client':     { label: 'DHCP client',     cls: 'ok'   },
+    'static':          { label: 'Static',          cls: 'dim'  },
+    'fallback-server': { label: 'Fallback server', cls: 'warn' },
+  };
+  const m = modeMap[fb.currentMode] || { label: 'Unknown', cls: 'dim' };
+
+  content.innerHTML = `
+    <div class="section-title">IP &amp; Network</div>
+    <form id="networkForm">
+
+      <div class="subsection">
+        <div class="section-section-title">Identity</div>
+        <div class="status-grid">
+          <div class="sk">Node Name</div>
+          <div class="sv"><input type="text" name="nodeName" value="${esc(d.nodeName)}" maxlength="17"></div>
+          <div class="sk">Long Name</div>
+          <div class="sv dim">${esc(d.longName)}</div>
+          <div class="sk">Current Mode</div>
+          <div class="sv ${m.cls}">${m.label}</div>
+        </div>
+      </div>
+
+      <div class="subsection">
+        <div class="section-section-title">Networking</div>
+        <div class="status-grid">
+          <div class="sk">DHCP</div>
+          <div class="sv"><input type="checkbox" name="dhcpEnable" ${d.dhcp ? 'checked' : ''}></div>
+          <div class="sk">IP Address</div>
+          <div class="sv"><div class="ip-row">${ipInputs('ip', d.ip)}</div></div>
+          <div class="sk">Subnet</div>
+          <div class="sv"><div class="ip-row">${ipInputs('subnet', d.subnet)}</div></div>
+          <div class="sk">Gateway</div>
+          <div class="sv"><div class="ip-row">${ipInputs('gateway', d.gateway)}</div></div>
+        </div>
+      </div>
+
+      <div class="subsection">
+        <div class="section-section-title">DHCP Fallback</div>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px 0;max-width:560px">
+          If DHCP is enabled and no upstream DHCP server replies at boot, masterETH
+          takes the static address below and serves DHCP itself. Off by default —
+          leave disabled on managed corporate networks.
+        </p>
+        <div class="status-grid">
+          <div class="sk">Enabled</div>
+          <div class="sv"><input type="checkbox" name="fbEnabled" ${fb.enabled ? 'checked' : ''}></div>
+          <div class="sk">Fallback IP</div>
+          <div class="sv"><div class="ip-row">${ipInputs('fbIp', fb.ip || [10,10,1,1])}</div></div>
+          <div class="sk">Fallback Subnet</div>
+          <div class="sv"><div class="ip-row">${ipInputs('fbSubnet', fb.subnet || [255,255,255,0])}</div></div>
+          <div class="sk">Pool Start</div>
+          <div class="sv">
+            <input type="number" name="fbPoolStart" min="2" max="253" value="${fb.poolStart ?? 100}">
+            <span class="hint">last octet</span>
+          </div>
+          <div class="sk">Pool Size</div>
+          <div class="sv">
+            <input type="number" name="fbPoolSize" min="1" max="100" value="${fb.poolSize ?? 32}">
+            <span class="hint">addresses</span>
+          </div>
+          <div class="sk">Lease Time</div>
+          <div class="sv">
+            <input type="number" name="fbLeaseMinutes" min="1" max="1440" value="${Math.max(1, Math.round((fb.leaseSeconds ?? 3600) / 60))}">
+            <span class="hint">minutes</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button type="submit" class="btn-primary">Save Changes</button>
+        <span class="save-status" id="netStatus"></span>
+      </div>
+    </form>
+
+    <div id="leasesBlock" style="margin-top: 28px"></div>`;
+
+  $('networkForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target;
+    const body = {
+      nodeName: f.nodeName.value,
+      dhcp:     f.dhcpEnable.checked,
+      ip:       readIpInputs(f, 'ip'),
+      subnet:   readIpInputs(f, 'subnet'),
+      gateway:  readIpInputs(f, 'gateway'),
+      dhcpFallback: {
+        enabled:      f.fbEnabled.checked,
+        ip:           readIpInputs(f, 'fbIp'),
+        subnet:       readIpInputs(f, 'fbSubnet'),
+        poolStart:    parseInt(f.fbPoolStart.value, 10),
+        poolSize:     parseInt(f.fbPoolSize.value, 10),
+        leaseSeconds: Math.max(60, parseInt(f.fbLeaseMinutes.value, 10) * 60),
+      },
+    };
+    try {
+      const r = await api('POST', '/api/network', body);
+      if (r.reboot) { showRebooting(); return; }
+      showSaved('netStatus');
+      toast('Network settings saved');
+    } catch(err) { toast('Save failed: ' + err.message, 'err'); }
+  });
+
+  // Live lease table — only meaningful when fallback is active. Polled
+  // every 5s while the user is on this page.
+  if (fb.currentMode === 'fallback-server') {
+    const renderLeases = async () => {
+      if (currentPage !== 'network') return;
+      let l;
+      try { l = await api('GET', '/api/dhcp-server/leases'); }
+      catch (err) { return; }
+      if (currentPage !== 'network') return;
+      const block = $('leasesBlock');
+      if (!block) return;
+      const rows = (l.leases || []).map(x =>
+        `<div class="sk">${esc(x.ip)}</div>` +
+        `<div class="sv">${esc(x.mac)}</div>` +
+        `<div class="sv dim">${formatLeaseRemaining(x.expiresInSeconds)}</div>`
+      ).join('');
+      block.innerHTML = `
+        <div class="section-section-title">Active Leases (${(l.leases || []).length})</div>
+        ${rows
+          ? `<div class="status-grid" style="grid-template-columns: 140px 200px 1fr">
+               <div class="sk" style="font-weight:600">IP</div>
+               <div class="sk" style="font-weight:600">MAC</div>
+               <div class="sk" style="font-weight:600">Expires in</div>
+               ${rows}
+             </div>`
+          : '<div class="sv dim">No active leases.</div>'}`;
+    };
+    renderLeases();
+    const t = setInterval(() => {
+      if (currentPage !== 'network') { clearInterval(t); return; }
+      renderLeases();
+    }, 5000);
+  }
+}
+
+function formatLeaseRemaining(sec) {
+  if (sec >= 3600) return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+  if (sec >= 60)   return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
+  return sec + 's';
+}
+
+// ── System page ──────────────────────────────────────────────────────────────
+
+async function renderSystem() {
+  if (currentPage !== 'system') return;
+  if (!content.querySelector('.subsection')) {
+    content.innerHTML = '<div class="loading">Fetching system status…</div>';
+  }
+  let d;
+  try { d = await api('GET', '/api/status'); }
+  catch(e) {
+    if (currentPage !== 'system') return;
+    content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>';
+    return;
+  }
+  if (currentPage !== 'system') return;
+
+  const heapKB    = (d.freeHeap / 1024).toFixed(1);
+  const heapClass = d.freeHeap > 30000 ? 'ok' : (d.freeHeap > 15000 ? 'warn' : 'err');
+  const fragClass = d.heapFragmentation < 30 ? 'ok' : (d.heapFragmentation < 60 ? 'warn' : 'err');
+  const wdtClass  = d.wdtCounter === 0 ? 'ok' : 'warn';
+
+  content.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">System</div>
+      <div class="heartbeat" id="hb"><span class="hb-dot"></span><span>Live</span></div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Identity</div>
+      <div class="status-grid">
+        <div class="sk">Node Name</div>     <div class="sv">${esc(d.nodeName)}</div>
+        <div class="sk">Device Type</div>   <div class="sv">${esc(d.deviceType)}</div>
+        <div class="sk">MAC Address</div>   <div class="sv">${esc(d.macAddress)}</div>
+        <div class="sk">Firmware</div>      <div class="sv ok">${esc(d.firmwareVersion)}</div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Status LED</div>
+      <div class="led-cell" title="masterETH status indicator">
+        <div class="led-dot ${esc(d.led)}"></div>
+        <div class="led-label">STATUS<span class="sub">${esc(ledLabel(d.led))}</span></div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Network</div>
+      <div class="status-grid">
+        <div class="sk">Link</div>          <div class="sv ${d.linkUp ? 'ok' : 'err'}"><span class="dot ${d.linkUp ? 'ok' : 'err'}"></span> ${d.linkUp ? 'Up' : 'Down'}</div>
+        <div class="sk">IP Address</div>    <div class="sv">${esc(d.ipAddress)} <span class="tag">${d.dhcp ? 'DHCP' : 'static'}</span></div>
+        <div class="sk">Subnet</div>        <div class="sv">${esc(d.subnet)}</div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Discovery</div>
+      <div class="status-grid">
+        <div class="sk">Nodes Online</div>  <div class="sv ${d.nodesOnline ? 'ok' : 'dim'}"><span class="dot ${d.nodesOnline ? 'ok' : ''}"></span> ${d.nodesOnline} / ${d.nodesKnown}</div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Fleet Health</div>
+      <div id="fleetGrid">
+        <div class="loading" style="padding:8px 0">Aggregating…</div>
+      </div>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:8px">
+        Aggregated from each compatible node's <code>/api/status</code>. Updates every 5 seconds in the background.
+      </p>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Resources</div>
+      <div class="status-grid">
+        <div class="sk">Uptime</div>             <div class="sv">${esc(d.uptime)}</div>
+        <div class="sk">Free Memory</div>        <div class="sv ${heapClass}">${heapKB} KB <span class="bar"><span class="bar-fill" style="width:${Math.min(100,(d.freeHeap/45000)*100).toFixed(0)}%"></span></span></div>
+        <div class="sk">Heap Fragmentation</div> <div class="sv ${fragClass}">${d.heapFragmentation}%</div>
+        <div class="sk">Largest Block</div>      <div class="sv">${(d.maxFreeBlock/1024).toFixed(1)} KB</div>
+        <div class="sk">Last Reset</div>         <div class="sv">${esc(d.resetReason)}</div>
+        <div class="sk">Soft Resets</div>        <div class="sv">${d.resetCounter}</div>
+        <div class="sk">Watchdog Resets</div>    <div class="sv ${wdtClass}">${d.wdtCounter}</div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Backup &amp; Restore</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px 0;max-width:560px">
+        Snapshot every compatible node's network + port config plus masterETH's own
+        config to a single JSON file. Restore matches nodes by MAC and re-applies
+        settings; nodes that aren't currently on the LAN are skipped (and logged).
+      </p>
+      <div class="btn-row" style="margin-top: 8px">
+        <button class="btn btn-secondary" id="backupDownloadBtn">Download backup</button>
+        <label class="btn btn-secondary" style="cursor:pointer">
+          Upload &amp; restore…
+          <input type="file" id="backupRestoreInput" accept="application/json,.json" style="display:none">
+        </label>
+        <span class="save-status" id="backupStatus"></span>
+      </div>
+    </div>
+
+    <p style="font-size:11px;color:var(--text-dim);margin-top:24px">Updates every 5 seconds.</p>`;
+
+  const hb = $('hb');
+  if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
+
+  renderFleetGrid();
+  wireBackupRestore();
+}
+
+// Roll up cached /api/status responses across the fleet. Pulled live
+// from nodeStatusCache, populated by the background poller.
+function renderFleetGrid() {
+  const slot = $('fleetGrid');
+  if (!slot) return;
+  const entries = [...nodeStatusCache.values()].filter(c => c && c.data);
+  if (!entries.length) {
+    slot.innerHTML = '<div style="padding:8px 0;color:var(--text-dim);font-size:13px">No fleet data yet — waiting for first poll cycle.</div>';
+    return;
+  }
+  const heaps = entries.map(c => c.data.freeHeap || 0);
+  const minHeap = Math.min(...heaps);
+  const avgHeap = Math.round(heaps.reduce((a, b) => a + b, 0) / heaps.length);
+  const fragMax = Math.max(...entries.map(c => c.data.heapFragmentation || 0));
+  const wdtSum  = entries.reduce((a, c) => a + (c.data.wdtCounter || 0), 0);
+  const rstSum  = entries.reduce((a, c) => a + (c.data.resetCounter || 0), 0);
+  const totalRate = entries.reduce((a, c) =>
+    a + (c.data.portARate || 0) + (c.data.portBRate || 0), 0);
+  const minHeapClass = minHeap > 30000 ? 'ok' : (minHeap > 15000 ? 'warn' : 'err');
+  const fragClass    = fragMax < 30 ? 'ok' : (fragMax < 60 ? 'warn' : 'err');
+  const wdtClass     = wdtSum === 0 ? 'ok' : 'warn';
+  slot.innerHTML = `
+    <div class="fleet-grid">
+      <div class="fk">Reporting nodes</div>          <div class="fv">${entries.length}</div>
+      <div class="fk">Total Art-Net traffic</div>    <div class="fv">${totalRate} pkt/s</div>
+      <div class="fk">Min free heap</div>            <div class="fv ${minHeapClass}">${(minHeap/1024).toFixed(1)} KB</div>
+      <div class="fk">Avg free heap</div>            <div class="fv">${(avgHeap/1024).toFixed(1)} KB</div>
+      <div class="fk">Worst fragmentation</div>      <div class="fv ${fragClass}">${fragMax}%</div>
+      <div class="fk">Total watchdog resets</div>    <div class="fv ${wdtClass}">${wdtSum}</div>
+      <div class="fk">Total soft resets</div>        <div class="fv">${rstSum}</div>
+    </div>`;
+}
+
+// ── Backup / Restore ─────────────────────────────────────────────────────────
+//
+// Schema v1: {schema, exportedAt, manager:{nodeName, dhcp, ip, subnet, gateway,
+//   dhcpFallback}, nodes:[{mac, nodeName, network:{}, ports:{A,B}}]}
+// Match-by-MAC on restore so nodes that have shifted IPs since backup still
+// land on the right device.
+
+const BACKUP_SCHEMA = 'expanseElectronics-fleet-v1';
+
+function wireBackupRestore() {
+  $('backupDownloadBtn')?.addEventListener('click', async () => {
+    const status = $('backupStatus');
+    if (status) status.textContent = 'Collecting…';
+    try {
+      const blob = await collectBackup();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const ts   = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `masterETH-fleet-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      if (status) status.textContent = '✓ Saved';
+      setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+    } catch (e) {
+      toast('Backup failed: ' + e.message, 'err');
+      if (status) status.textContent = '';
+    }
+  });
+
+  $('backupRestoreInput')?.addEventListener('change', async ev => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    let parsed;
+    try {
+      const text = await file.text();
+      parsed = JSON.parse(text);
+    } catch (e) { toast('Invalid JSON: ' + e.message, 'err'); return; }
+    if (parsed.schema !== BACKUP_SCHEMA) {
+      toast('Unsupported schema: ' + parsed.schema, 'err'); return;
+    }
+    await renderRestorePreview(parsed);
+    ev.target.value = '';   // allow re-uploading the same file
+  });
+}
+
+// Diff helpers ──────────────────────────────────────────────────────────────
+
+function diffObjects(a, b, path = '') {
+  const out = [];
+  // Treat null and undefined as the same "absent" value.
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull && bNull) return out;
+  if (aNull !== bNull) return [{ path, from: a, to: b }];
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return [{ path, from: JSON.stringify(a), to: JSON.stringify(b) }];
+    for (let i = 0; i < a.length; i++) {
+      out.push(...diffObjects(a[i], b[i], `${path}[${i}]`));
+    }
+    return out;
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const k of keys) {
+      out.push(...diffObjects(a[k], b[k], path ? `${path}.${k}` : k));
+    }
+    return out;
+  }
+  if (a !== b) return [{ path, from: a, to: b }];
+  return [];
+}
+
+function formatDiffValue(v) {
+  if (v === null || v === undefined) return '<span class="dim">—</span>';
+  if (typeof v === 'object') return esc(JSON.stringify(v));
+  return esc(String(v));
+}
+
+async function renderRestorePreview(bundle) {
+  const block = $('leasesBlock') ||      // not on Network page; use System content area
+                content.querySelector('.subsection:last-of-type');
+  // Fetch live state for diff calculation.
+  const status = $('backupStatus');
+  if (status) status.textContent = 'Computing diff…';
+
+  let liveManager;
+  try { liveManager = await api('GET', '/api/network'); } catch (e) { liveManager = null; }
+  let liveNodes = [];
+  try { liveNodes = (await api('GET', '/api/nodes')).nodes || []; } catch (e) {}
+  const byMac = new Map(liveNodes.map(n => [n.mac, n]));
+
+  // For each bundle node, fetch live network + ports of the matching node.
+  const nodeRows = await Promise.all((bundle.nodes || []).map(async (bn) => {
+    const live = byMac.get(bn.mac);
+    if (!live || live.compat !== 'compatible') {
+      return { bn, status: 'missing' };
+    }
+    let liveNet = null, liveA = null, liveB = null;
+    try {
+      [liveNet, liveA, liveB] = await Promise.all([
+        nodeApi('GET', live.ip, '/api/network').catch(() => null),
+        nodeApi('GET', live.ip, '/api/ports/A').catch(() => null),
+        nodeApi('GET', live.ip, '/api/ports/B').catch(() => null),
+      ]);
+    } catch (e) {}
+    const changes = [
+      ...diffObjects(liveNet, bn.network, 'network'),
+      ...diffObjects(liveA,   bn.ports?.A, 'ports.A'),
+      ...diffObjects(liveB,   bn.ports?.B, 'ports.B'),
+    ];
+    return { bn, live, changes };
+  }));
+
+  if (status) status.textContent = '';
+
+  const managerChanges = bundle.manager ? diffObjects(liveManager, bundle.manager) : [];
+
+  // Cull the noisy / non-actionable diff paths so the user sees only
+  // settable fields. Live `/api/network` includes runtime status fields
+  // (currentMode, …) that the bundle doesn't carry; treat their absence
+  // in the bundle as "no change", not "would clear".
+  const ignorable = (path) =>
+    path.startsWith('dhcpFallback.currentMode') ||
+    path === 'longName' ||
+    path === 'broadcast' ||
+    path.endsWith('.error');
+  const filterChanges = (cs) => cs.filter(c => !ignorable(c.path) && !(c.from === undefined));
+  const mc = filterChanges(managerChanges);
+  const totalChanges = mc.length + nodeRows.reduce((a, r) => a + (r.changes ? filterChanges(r.changes).length : 0), 0);
+
+  const renderChangeList = (changes) => {
+    const filtered = filterChanges(changes);
+    if (!filtered.length) return '<span class="dim">no changes</span>';
+    return filtered.slice(0, 8).map(c =>
+      `<code style="font-size:11px">${esc(c.path)}</code>: ${formatDiffValue(c.from)} → <span style="color:var(--accent)">${formatDiffValue(c.to)}</span>`
+    ).join('<br>') + (filtered.length > 8 ? `<br><span class="dim">…and ${filtered.length - 8} more</span>` : '');
+  };
+
+  // Inject the preview block into the System page content. Find a stable
+  // anchor — the Backup & Restore subsection.
+  const anchor = [...content.querySelectorAll('.section-section-title')]
+    .find(el => el.textContent.trim() === 'Backup & Restore')?.parentElement;
+  if (!anchor) return;
+
+  // Remove a previous preview if the user picks a different file.
+  $('restorePreview')?.remove();
+
+  const preview = document.createElement('div');
+  preview.className = 'subsection';
+  preview.id = 'restorePreview';
+  preview.innerHTML = `
+    <div class="section-section-title">Restore preview · ${totalChanges} change${totalChanges !== 1 ? 's' : ''}</div>
+    <div class="sv dim" style="padding: 0 0 10px 0; font-size:11px">
+      Bundle exported ${esc(bundle.exportedAt || 'unknown')}.
+      Compare each row before applying. Live status fields (currentMode, longName) are excluded from the diff.
+    </div>
+    <div class="status-grid" style="grid-template-columns: 200px 1fr">
+      <div class="sk" style="font-weight:600">Target</div>
+      <div class="sk" style="font-weight:600">Changes</div>
+      <div class="sk">masterETH</div>
+      <div class="sv" style="display:block">${renderChangeList(managerChanges)}</div>
+      ${nodeRows.map(r => {
+        const label = getTag(r.bn.mac) || r.bn.nodeName || r.bn.mac;
+        if (r.status === 'missing') {
+          return `<div class="sk">${esc(label)}</div><div class="sv warn">missing on LAN — skipped</div>`;
+        }
+        return `<div class="sk">${esc(label)}</div><div class="sv" style="display:block">${renderChangeList(r.changes)}</div>`;
+      }).join('')}
+    </div>
+    <div class="btn-row" style="margin-top: 12px">
+      <button class="btn btn-primary"   id="restoreApplyBtn" ${totalChanges === 0 ? 'disabled' : ''}>Apply ${totalChanges} change${totalChanges !== 1 ? 's' : ''}</button>
+      <button class="btn btn-secondary" id="restoreCancelBtn">Cancel</button>
+    </div>`;
+
+  anchor.insertAdjacentElement('afterend', preview);
+
+  $('restoreCancelBtn').addEventListener('click', () => preview.remove());
+  $('restoreApplyBtn').addEventListener('click', async () => {
+    $('restoreApplyBtn').disabled = true;
+    $('restoreCancelBtn').disabled = true;
+    await applyBackup(bundle);
+    preview.remove();
+  });
+}
+
+async function collectBackup() {
+  const [manager, nodesResp] = await Promise.all([
+    api('GET', '/api/network'),
+    api('GET', '/api/nodes'),
+  ]);
+  const nodes = (nodesResp.nodes || []).filter(n => n.compat === 'compatible');
+
+  // Per-node fetches in parallel-across-nodes (queued per-IP). Failures
+  // are reported in the node's "error" field but don't kill the bundle.
+  const nodeBlobs = await Promise.all(nodes.map(async n => {
+    const out = { mac: n.mac, nodeName: n.nodeName, deviceType: n.deviceType, firmwareVersion: n.firmwareVersion };
+    try {
+      const [net, a, b] = await Promise.all([
+        nodeApi('GET', n.ip, '/api/network').catch(() => null),
+        nodeApi('GET', n.ip, '/api/ports/A').catch(() => null),
+        nodeApi('GET', n.ip, '/api/ports/B').catch(() => null),
+      ]);
+      out.network = net;
+      out.ports   = { A: a, B: b };
+    } catch (e) { out.error = e.message; }
+    return out;
+  }));
+
+  const bundle = {
+    schema:     BACKUP_SCHEMA,
+    exportedAt: new Date().toISOString(),
+    manager,
+    nodes:      nodeBlobs,
+  };
+  return new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+}
+
+async function applyBackup(bundle) {
+  const status = $('backupStatus');
+  let ok = 0, missing = 0, fail = 0;
+
+  // masterETH self-config first.
+  if (bundle.manager) {
+    try { await api('POST', '/api/network', bundle.manager); ok++; }
+    catch (e) { fail++; }
+  }
+
+  // Re-fetch live registry so MAC → IP mapping is current.
+  let live = [];
+  try { live = (await api('GET', '/api/nodes')).nodes || []; } catch (e) {}
+  const byMac = new Map(live.map(n => [n.mac, n]));
+
+  for (const node of (bundle.nodes || [])) {
+    const live = byMac.get(node.mac);
+    if (!live || live.compat !== 'compatible') { missing++; continue; }
+    if (status) status.textContent = `Restoring ${live.nodeName || live.ip}…`;
+    try {
+      if (node.network) await nodeApi('POST', live.ip, '/api/network', node.network);
+      if (node.ports?.A) await nodeApi('POST', live.ip, '/api/ports/A', node.ports.A);
+      if (node.ports?.B) await nodeApi('POST', live.ip, '/api/ports/B', node.ports.B);
+      ok++;
+    } catch (e) { fail++; }
+  }
+
+  const summary = `Restored ${ok}, missing ${missing}, failed ${fail}`;
+  toast(summary + ' — reboot affected nodes to apply', fail ? 'warn' : 'ok', 7000);
+  if (status) status.textContent = '✓ Restore complete';
+  setTimeout(() => { if (status) status.textContent = ''; }, 4000);
+}
+
+// ── Firmware page ────────────────────────────────────────────────────────────
+
+async function renderFirmware() {
+  let d;
+  try { d = await api('GET', '/api/status'); } catch(e) { d = { firmwareVersion: '?' }; }
+
+  content.innerHTML = `
+    <div class="section-title">Firmware Update</div>
+    <div class="fw-info">Current version: <span>${esc(d.firmwareVersion)}</span></div>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:20px">
+      Select a <code>.bin</code> firmware file. masterETH will reboot automatically when the upload completes.
+    </p>
+    <div class="file-input-wrapper">
+      <input type="file" id="fwFile" accept=".bin">
+      <div class="file-label" id="fwLabel">Choose firmware (.bin)</div>
+    </div>
+    <div class="progress-bar" id="fwProgress"><div class="progress-fill" id="fwFill"></div></div>
+    <div id="uploadMsg"></div>
+    <div class="btn-row" style="margin-top:16px">
+      <button id="fwUploadBtn" class="btn-primary" disabled>Upload Firmware</button>
+    </div>
+    <hr class="divider">
+    <p style="font-size:13px;color:var(--text-dim)">
+      To flash a <strong>node</strong> instead of masterETH, use the browser-based flasher at
+      <a href="https://expanseelectronics.com/updater" target="_blank" rel="noreferrer">expanseelectronics.com/updater</a>.
+    </p>`;
+
+  const fileInput = $('fwFile');
+  const fileLabel = $('fwLabel');
+  const uploadBtn = $('fwUploadBtn');
+  const uploadMsg = $('uploadMsg');
+  const progress  = $('fwProgress');
+  const fill      = $('fwFill');
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) {
+      fileLabel.textContent = fileInput.files[0].name;
+      fileLabel.classList.add('has-file');
+      uploadBtn.disabled = false;
+    }
+  });
+
+  uploadBtn.addEventListener('click', async () => {
+    if (!fileInput.files.length) return;
+    uploadBtn.disabled = true;
+    uploadMsg.textContent = 'Preparing masterETH…';
+    progress.classList.remove('show');
+
+    try { await api('POST', '/api/firmware/prepare'); }
+    catch(e) {
+      uploadMsg.textContent = 'Prepare failed: ' + e.message;
+      uploadBtn.disabled = false;
+      return;
+    }
+
+    uploadMsg.textContent = 'Uploading…';
+    progress.classList.add('show');
+
+    const data = new FormData();
+    data.append('update', fileInput.files[0]);
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', ev => {
+      if (ev.lengthComputable) {
+        const pct = Math.ceil((ev.loaded / ev.total) * 100);
+        fill.style.width = pct + '%';
+        uploadMsg.textContent = pct < 100 ? 'Uploading… ' + pct + '%' : 'Processing…';
+      }
+    });
+
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState !== 4) return;
+      try {
+        const r = JSON.parse(xhr.responseText);
+        if (r.success) {
+          uploadMsg.textContent = r.message || 'Upload complete. Rebooting…';
+          toast('Firmware uploaded — rebooting', 'ok', 8000);
+          setTimeout(() => location.reload(), 12000);
+        } else {
+          uploadMsg.textContent = 'Upload failed: ' + (r.message || 'unknown error');
+          uploadBtn.disabled = false;
+        }
+      } catch(_) {
+        uploadMsg.textContent = 'Upload failed.';
+        uploadBtn.disabled = false;
+      }
+    };
+
+    xhr.open('POST', '/upload');
+    xhr.send(data);
+  });
+}
+
+// ── Reboot ───────────────────────────────────────────────────────────────────
+
+function showRebooting() {
+  stopPollTimer();
+  content.innerHTML = `
+    <div id="rebootingMsg">
+      <h2>masterETH Rebooting…</h2>
+      <p>Page will reload in 8 seconds.</p>
+    </div>`;
+  toast('masterETH is rebooting', 'warn', 10000);
+  setTimeout(() => location.reload(), 8000);
+}
+
+$('rebootLink').addEventListener('click', e => {
+  e.preventDefault();
+  $('rebootDlg').showModal();
+});
+$('rebootCancel').addEventListener('click', () => $('rebootDlg').close());
+$('rebootConfirm').addEventListener('click', async () => {
+  $('rebootDlg').close();
+  try {
+    await api('POST', '/api/reboot');
+    showRebooting();
+  } catch(_) {
+    toast('Reboot request sent', 'warn');
+    setTimeout(() => location.reload(), 8000);
+  }
+});
+
+// ── Router ───────────────────────────────────────────────────────────────────
+
+function stopPollTimer() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+function setActive(page) {
+  document.querySelectorAll('#nav a[data-page]').forEach(a => {
+    a.classList.toggle('active', a.dataset.page === page);
+  });
+}
+
+async function loadFromHash() {
+  stopPollTimer();
+  const h = location.hash.slice(1);
+  if (h.startsWith('node/')) {
+    setActive('nodes');
+    currentPage = 'node-detail';
+    // Path shape: `node/<ip>` or `node/<ip>/<tab>`. Split once on '/'
+    // so an IPv4-style ip stays intact.
+    const rest = h.slice(5);
+    const slashIdx = rest.indexOf('/');
+    const ip  = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+    const tab = slashIdx === -1 ? 'identity' : rest.slice(slashIdx + 1);
+    await renderNodeDetail(ip, tab);
+    return;
+  }
+  const page = h || 'nodes';
+  currentPage = page;
+  setActive(page);
+  switch (page) {
+    case 'nodes':
+      await renderNodes();
+      // Guard: a fast second navigation (e.g. user clicks Network before
+      // renderNodes resolves) flips currentPage. Don't schedule a polling
+      // timer for a page we're no longer on — it would later overwrite
+      // the destination page's content and cause "ghost" alternation.
+      if (currentPage === 'nodes') pollTimer = setInterval(renderNodes, 5000);
+      break;
+    case 'universes': await renderUniverses(); break;
+    case 'network':  await renderNetwork(); break;
+    case 'system':
+      await renderSystem();
+      if (currentPage === 'system') pollTimer = setInterval(renderSystem, 5000);
+      break;
+    case 'firmware': await renderFirmware(); break;
+    default:
+      location.hash = '#nodes';
+      // hashchange will trigger another loadFromHash with the new hash.
+      return;
+  }
+}
+
+document.querySelectorAll('#nav a[data-page]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = '#' + a.dataset.page;
+    if (location.hash === target) {
+      // Already on this page — hashchange won't fire, so reload manually.
+      loadFromHash();
+    } else {
+      // hashchange will fire and trigger loadFromHash; don't call it here
+      // too or we get two concurrent loads (each potentially scheduling a
+      // poll timer; the unreachable second handle leaks and keeps firing).
+      location.hash = target;
+    }
+  });
+});
+
+window.addEventListener('hashchange', loadFromHash);
+
+// Global keyboard shortcuts. Pressed-while-typing-in-an-input is
+// excluded so search and form fields keep working normally.
+function inEditableField() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+document.addEventListener('keydown', e => {
+  // "/" → focus search box on the Nodes page.
+  if (e.key === '/' && !inEditableField() && currentPage === 'nodes') {
+    const search = $('nodeSearch');
+    if (search) { e.preventDefault(); search.focus(); search.select(); }
+    return;
+  }
+  // Esc in search → clear and blur.
+  if (e.key === 'Escape' && document.activeElement?.id === 'nodeSearch') {
+    searchQuery = '';
+    document.activeElement.blur();
+    if (currentPage === 'nodes') renderNodes();
+    return;
+  }
+  // Arrow nav within the Nodes list.
+  if (currentPage === 'nodes' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    if (inEditableField() && document.activeElement?.id !== 'nodeSearch') return;
+    const rows = [...content.querySelectorAll('.node-row')];
+    if (!rows.length) return;
+    e.preventDefault();
+    const cur = document.activeElement?.classList?.contains('node-row')
+      ? rows.indexOf(document.activeElement) : -1;
+    const idx = e.key === 'ArrowDown'
+      ? Math.min(cur + 1, rows.length - 1)
+      : (cur < 0 ? rows.length - 1 : Math.max(cur - 1, 0));
+    rows[idx].focus();
+    return;
+  }
+  // Enter on a focused row → drill in.
+  if (e.key === 'Enter' && document.activeElement?.classList?.contains('node-row')) {
+    const ip = document.activeElement.dataset.ip;
+    if (ip) location.hash = '#node/' + ip;
+  }
+});
+
+// Background data path: keep /api/status fresh for every compatible node
+// regardless of which page the user is on. Hooks let pages re-render
+// the affected components without polling on their own.
+onStatusUpdate(() => {
+  if (currentPage === 'nodes')  renderNodes();
+  if (currentPage === 'system') renderFleetGrid();
+  if (currentPage === 'node-detail') {
+    // Find the MAC for the detail page from the URL hash.
+    const h = location.hash.replace('#', '');
+    if (h.startsWith('node/')) {
+      const ip = h.slice(5).split('/')[0];
+      const n = cachedNodes.find(x => x.ip === ip);
+      if (n) refreshSparklines(n.mac);
+    }
+  }
+});
+startStatusPoller();
+
+// Load server-side tags before the first render so labels are correct on
+// the initial Nodes list paint. If the fetch fails, loadServerTags falls
+// back to the legacy localStorage cache.
+loadServerTags().finally(loadFromHash);
+  </script>
+</body>
+</html>

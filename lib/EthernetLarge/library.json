@@ -1,0 +1,13 @@
+{
+  "name": "EthernetLarge",
+  "version": "2.0.0",
+  "description": "Wiznet W5x00 Ethernet library, fork of the standard Arduino Ethernet library with larger buffer support. Originally maintained by Paul Stoffregen.",
+  "keywords": ["ethernet", "w5500", "w5100", "wiznet"],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif8266",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src"
+  }
+}
