@@ -191,11 +191,12 @@ nav a.active {
   color: var(--text-dim); line-height: 1.3;
 }
 .led-label .sub { display: block; color: var(--text-dim); font-weight: 400; opacity: 0.7; }
-.led-dot.boot        { background: #4fbcc4; box-shadow: 0 0 8px rgba(79,188,196,0.4); }
-.led-dot.link-down   { background: #c43c3c; box-shadow: 0 0 8px rgba(196,60,60,0.45); }
-.led-dot.searching   { background: #ff5ab4; box-shadow: 0 0 8px rgba(255,90,180,0.4);  animation: led-pulse 3s ease-in-out infinite; }
-.led-dot.healthy     { background: #2ecc71; box-shadow: 0 0 8px rgba(46,204,113,0.4);  animation: led-pulse 3s ease-in-out infinite; }
-.led-dot.all-offline { background: #ff8c1a; box-shadow: 0 0 8px rgba(255,140,26,0.4);  animation: led-pulse 3s ease-in-out infinite; }
+.led-dot.boot            { background: #4fbcc4; box-shadow: 0 0 8px rgba(79,188,196,0.4); }
+.led-dot.link-down       { background: #c43c3c; box-shadow: 0 0 8px rgba(196,60,60,0.45); }
+.led-dot.searching       { background: #ff5ab4; box-shadow: 0 0 8px rgba(255,90,180,0.4);  animation: led-pulse 3s ease-in-out infinite; }
+.led-dot.healthy         { background: #2ecc71; box-shadow: 0 0 8px rgba(46,204,113,0.4);  animation: led-pulse 3s ease-in-out infinite; }
+.led-dot.all-offline     { background: #ff8c1a; box-shadow: 0 0 8px rgba(255,140,26,0.4);  animation: led-pulse 3s ease-in-out infinite; }
+.led-dot.fallback-server { background: #ffb400; box-shadow: 0 0 8px rgba(255,180,0,0.45); animation: led-pulse 3s ease-in-out infinite; }
 @keyframes led-pulse {
   0%, 100% { opacity: 0.35; }
   50%      { opacity: 1; }
@@ -652,12 +653,13 @@ function showSaved(id) {
 
 function ledLabel(s) {
   switch (s) {
-    case 'boot':        return 'Booting';
-    case 'link-down':   return 'No link';
-    case 'searching':   return 'Searching';
-    case 'healthy':     return 'Healthy';
-    case 'all-offline': return 'All offline';
-    default:            return '—';
+    case 'boot':            return 'Booting';
+    case 'link-down':       return 'No link';
+    case 'searching':       return 'Searching';
+    case 'healthy':         return 'Healthy';
+    case 'all-offline':     return 'All offline';
+    case 'fallback-server': return 'Fallback DHCP';
+    default:                return '—';
   }
 }
 
