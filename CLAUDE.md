@@ -12,6 +12,8 @@ Discovered/managed node families:
 
 Current firmware: **v2.2** (`FIRMWARE_VERSION` in `include/manager.h`) — the "hardware DMX-Workshop" release: per-quadETH **RDM** + **Scenes** tabs, a **DMX Test** generator page, an **Art-Net Monitor** page, and **Fleet firmware OTA**, plus quadETH port-config + telemetry fixes (see "quadETH support in the SPA" and "DMX-Workshop features" below). Read `manager-handover.md` and `manager-handover-addendum.md` (in the parent directory) for the read-side and write-side architecture briefs respectively, before making non-obvious changes.
 
+**Licensing & branding (fleet convention, 2026-06-28):** masterETH is **PolyForm Noncommercial 1.0.0** (source-available, no commercial use — see `LICENSE`; quadETH matches, dualETH stays GPL). Fleet branding scheme: `deviceType` = **`<product>-HALO`** (→ `masterETH-HALO`), `firmwareVersion` **`v`-prefixed**, serial prefix **`ME-`** (masterETH had none — add it), web `<title>` = `<product> — expanseElectronics`, GitHub org **`expanseElectronics`** (CamelCase). The quadETH CLAUDE.md "Licensing & branding" section is the canonical copy.
+
 ## Build / flash / monitor
 
 PlatformIO project, single environment `esp07`:
