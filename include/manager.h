@@ -33,7 +33,7 @@
 // ---------------------------------------------------------------------------
 
 #define FIRMWARE_VERSION    "v2.2"
-#define DEVICE_TYPE         "masterETH-Gen1"
+#define DEVICE_TYPE         "masterETH-HALO"
 #define ESTA_MAN            0x7D00
 
 // Same PCB family as dualETH — ESP-07, single W5500. The DMX driver pins

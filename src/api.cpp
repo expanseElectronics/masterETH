@@ -117,6 +117,25 @@ static const char* networkModeString(NetworkMode m) {
 // matches the dualETH v7.3+ schema so a Manager discovering another Manager
 // reads the same shape.
 // ---------------------------------------------------------------------------
+// Per-unit serial ME-XXXXXXXXXXXX — 12 base36 digits from two Murmur3 finalizer
+// mixes over the chip id. Mirrors the quadETH QE-/dualETH DE- scheme so the
+// fleet has a consistent serial format. Deterministic per unit.
+static uint32_t murmurMix(uint32_t x) {
+  x ^= x >> 16; x *= 0x85ebca6bUL;
+  x ^= x >> 13; x *= 0xc2b2ae35UL;
+  x ^= x >> 16; return x;
+}
+static const char* selfSerial() {
+  uint32_t id = ESP.getChipId();
+  uint64_t v = ((uint64_t)murmurMix(id) << 32) | murmurMix(id ^ 0xDEADBEEFUL);
+  static const char A[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  static char buf[16];
+  buf[0] = 'M'; buf[1] = 'E'; buf[2] = '-';
+  for (int i = 11; i >= 0; i--) { buf[3 + i] = A[v % 36]; v /= 36; }
+  buf[15] = 0;
+  return buf;
+}
+
 void apiGetIdentify() {
   char macBuf[18]; macToBuffer(macBuf, sizeof(macBuf));
 
@@ -127,6 +146,7 @@ void apiGetIdentify() {
       "\"vendor\":\"expanseElectronics\","
       "\"deviceType\":\"" DEVICE_TYPE "\","
       "\"chipId\":\"%08X\","
+      "\"serial\":\"%s\","
       "\"mac\":\"%s\","
       "\"nodeName\":\"%s\","
       "\"firmwareVersion\":\"" FIRMWARE_VERSION "\","
@@ -138,6 +158,7 @@ void apiGetIdentify() {
       "}"
     "}",
     (unsigned)ESP.getChipId(),
+    selfSerial(),
     macBuf,
     deviceSettings.nodeName,
     onboardingDone ? "false" : "true",
