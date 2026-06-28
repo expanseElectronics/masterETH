@@ -53,6 +53,10 @@ void StatusLeds::noteFallbackServer(bool active) {
   fallbackServer_ = active;
 }
 
+void StatusLeds::startLocate() {
+  locateUntilMs_ = millis() + 10000;  // 10 seconds
+}
+
 uint8_t StatusLeds::breathe(uint32_t now, uint8_t max) const {
   float phase = (float)(now % BREATHE_PERIOD_MS) / (float)BREATHE_PERIOD_MS;
   float v     = 0.5f - 0.5f * cosf(phase * 2.0f * (float)M_PI);
@@ -72,6 +76,19 @@ void StatusLeds::tick() {
     pixDriver.doPixel(buf, STATUS_LED_PIN, 3);
     return;
   }
+
+  // Locate mode — rapid orange flash at 10Hz for 10 seconds
+  if (locateUntilMs_ > 0 && now < locateUntilMs_) {
+    bool on = (now / 50) % 2;  // 50ms on, 50ms off = 10Hz
+    if (on) {
+      scaleColor(buf, ORANGE_R, ORANGE_G, ORANGE_B, 255);
+    } else {
+      buf[0] = buf[1] = buf[2] = 0;
+    }
+    pixDriver.doPixel(buf, STATUS_LED_PIN, 3);
+    return;
+  }
+  locateUntilMs_ = 0;  // Clear expired locate
 
   if (!linkUp_) {
     scaleColor(buf, RED_R, RED_G, RED_B, RED_BRIGHTNESS);

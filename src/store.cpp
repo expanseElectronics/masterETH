@@ -67,3 +67,19 @@ void eepromLoad() {
     // unreachable
   }
 }
+
+// ---------------------------------------------------------------------------
+// Onboarding wizard flag (v1.2)
+// ---------------------------------------------------------------------------
+
+void onboardingFlagLoad() {
+  onboardingDone = (EEPROM.read(ONBOARD_FLAG_ADDR) == ONBOARD_FLAG_MAGIC);
+}
+
+void onboardingMarkDone() {
+  if (EEPROM.read(ONBOARD_FLAG_ADDR) != ONBOARD_FLAG_MAGIC) {
+    EEPROM.write(ONBOARD_FLAG_ADDR, ONBOARD_FLAG_MAGIC);
+    EEPROM.commit();
+  }
+  onboardingDone = true;
+}

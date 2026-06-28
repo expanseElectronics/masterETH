@@ -62,6 +62,7 @@ ManagedNode* findFreeSlot() {
 void nodeRegistryBegin() {
   for (uint8_t i = 0; i < NODE_REGISTRY_CAP; i++) {
     g_nodes[i] = ManagedNode{};
+    g_nodes[i].serialNumber[0] = '\0';  // Ensure serial is always null-terminated
   }
 }
 
@@ -101,7 +102,8 @@ ManagedNode* nodeRegistryNoteSeen(IPAddress ip, const uint8_t mac[6]) {
 void nodeRegistryNoteIdentified(ManagedNode* node,
                                 const char* nodeName,
                                 const char* deviceType,
-                                const char* firmwareVersion) {
+                                const char* firmwareVersion,
+                                const char* serialNumber) {
   if (!node) return;
   uint32_t now = millis();
   strlcpy(node->nodeName,        nodeName        ? nodeName        : "",
@@ -110,15 +112,22 @@ void nodeRegistryNoteIdentified(ManagedNode* node,
           sizeof(node->deviceType));
   strlcpy(node->firmwareVersion, firmwareVersion ? firmwareVersion : "",
           sizeof(node->firmwareVersion));
+  strlcpy(node->serialNumber,    serialNumber    ? serialNumber    : "",
+          sizeof(node->serialNumber));
   node->lastIdentifiedMs = now;
   node->nextProbeMs      = now + REPROBE_PERIOD_MS;
   // v7.4 added CORS to /api/* on dualETH; pre-v7.4 nodes will block the
   // SPA's cross-origin POSTs at the browser preflight. Surface that as
   // ReadOnly so the SPA can show a "Needs v7.4" pill instead of a
   // confusing "save failed" error after the user tries to edit.
-  node->compat = versionAtLeast74(node->firmwareVersion)
-                   ? NodeCompat::Compatible
-                   : NodeCompat::ReadOnly;
+  // quadETH: all firmware versions have CORS (0.x.x versioning scheme).
+  if (strncmp(node->deviceType, "quadETH", 7) == 0) {
+    node->compat = NodeCompat::Compatible;
+  } else {
+    node->compat = versionAtLeast74(node->firmwareVersion)
+                     ? NodeCompat::Compatible
+                     : NodeCompat::ReadOnly;
+  }
 }
 
 void nodeRegistryNoteIncompatible(ManagedNode* node) {
@@ -158,4 +167,160 @@ const ManagedNode* nodeRegistryAt(uint8_t index) {
 
 uint8_t nodeRegistryCapacity() {
   return NODE_REGISTRY_CAP;
+}
+
+// ---------------------------------------------------------------------------
+// Persistence (v1.2+)
+// ---------------------------------------------------------------------------
+
+// EEPROM layout for node cache: starting at address 872, each node occupies
+// 94 bytes of stable fields only. Volatile fields (IP, lastSeenMs, online,
+// nextProbeMs) are not persisted — they rebuild from discovery on boot.
+// This limits flash wear: saves happen only on identify (once per node per
+// boot, or every 5 min reprobe), not on every ArtPollReply.
+// Layout: version(1) + entries[32]
+// Per entry: used(1) + mac(6) + nodeName(18) + deviceType(40) +
+// firmwareVersion(12) + serialNumber(16) + compat(1) = 94 bytes
+
+#define NODE_CACHE_START 872
+#define NODE_CACHE_VERSION_ADDR NODE_CACHE_START
+#define NODE_CACHE_ENTRIES_START (NODE_CACHE_START + 1)
+#define NODE_CACHE_ENTRY_SIZE 94
+#define NODE_CACHE_VERSION 3  // v1=78-byte, v2=90-byte (chipId), v3=94-byte (serial)
+
+#include <EEPROM.h>
+
+void nodeRegistryLoad() {
+  // Check cache version - if mismatch, skip load (stale format)
+  uint8_t cacheVersion = EEPROM.read(NODE_CACHE_VERSION_ADDR);
+  if (cacheVersion != NODE_CACHE_VERSION) {
+    // Old or invalid cache format - skip load, will repopulate from discovery
+    return;
+  }
+
+  for (uint8_t i = 0; i < NODE_REGISTRY_CAP; i++) {
+    uint16_t addr = NODE_CACHE_ENTRIES_START + (i * NODE_CACHE_ENTRY_SIZE);
+
+    // Read 'used' flag
+    uint8_t used = EEPROM.read(addr);
+    if (used != 1) continue;  // Slot is empty
+
+    g_nodes[i].used = true;
+
+    // Read MAC (6 bytes)
+    for (uint8_t j = 0; j < 6; j++) {
+      g_nodes[i].mac[j] = EEPROM.read(addr + 1 + j);
+    }
+
+    // Read nodeName (18 bytes)
+    for (uint8_t j = 0; j < 18; j++) {
+      g_nodes[i].nodeName[j] = EEPROM.read(addr + 7 + j);
+    }
+    g_nodes[i].nodeName[17] = '\0';  // Ensure null-termination
+
+    // Read deviceType (40 bytes)
+    for (uint8_t j = 0; j < 40; j++) {
+      g_nodes[i].deviceType[j] = EEPROM.read(addr + 25 + j);
+    }
+    g_nodes[i].deviceType[39] = '\0';
+
+    // Read firmwareVersion (12 bytes)
+    for (uint8_t j = 0; j < 12; j++) {
+      g_nodes[i].firmwareVersion[j] = EEPROM.read(addr + 65 + j);
+    }
+    g_nodes[i].firmwareVersion[11] = '\0';
+
+    // Read serialNumber (16 bytes)
+    for (uint8_t j = 0; j < 16; j++) {
+      g_nodes[i].serialNumber[j] = EEPROM.read(addr + 77 + j);
+    }
+    g_nodes[i].serialNumber[15] = '\0';
+
+    // Read compat (1 byte)
+    g_nodes[i].compat = (NodeCompat)EEPROM.read(addr + 93);
+
+    // Volatile fields initialize to defaults (discovery will update them)
+    g_nodes[i].ip = IPAddress(0, 0, 0, 0);
+    g_nodes[i].lastSeenMs = 0;
+    g_nodes[i].lastIdentifiedMs = 0;
+    g_nodes[i].nextProbeMs = 0;
+    g_nodes[i].online = false;
+  }
+}
+
+void nodeRegistrySave() {
+  bool dirty = false;
+
+  // Write cache version first time
+  if (EEPROM.read(NODE_CACHE_VERSION_ADDR) != NODE_CACHE_VERSION) {
+    EEPROM.write(NODE_CACHE_VERSION_ADDR, NODE_CACHE_VERSION);
+    dirty = true;
+  }
+
+  for (uint8_t i = 0; i < NODE_REGISTRY_CAP; i++) {
+    uint16_t addr = NODE_CACHE_ENTRIES_START + (i * NODE_CACHE_ENTRY_SIZE);
+
+    // Write 'used' flag
+    uint8_t used = g_nodes[i].used ? 1 : 0;
+    if (EEPROM.read(addr) != used) {
+      EEPROM.write(addr, used);
+      dirty = true;
+    }
+
+    if (!g_nodes[i].used) continue;  // Skip empty slots
+
+    // Write MAC (6 bytes)
+    for (uint8_t j = 0; j < 6; j++) {
+      uint8_t b = g_nodes[i].mac[j];
+      if (EEPROM.read(addr + 1 + j) != b) {
+        EEPROM.write(addr + 1 + j, b);
+        dirty = true;
+      }
+    }
+
+    // Write nodeName (18 bytes)
+    for (uint8_t j = 0; j < 18; j++) {
+      uint8_t b = g_nodes[i].nodeName[j];
+      if (EEPROM.read(addr + 7 + j) != b) {
+        EEPROM.write(addr + 7 + j, b);
+        dirty = true;
+      }
+    }
+
+    // Write deviceType (40 bytes)
+    for (uint8_t j = 0; j < 40; j++) {
+      uint8_t b = g_nodes[i].deviceType[j];
+      if (EEPROM.read(addr + 25 + j) != b) {
+        EEPROM.write(addr + 25 + j, b);
+        dirty = true;
+      }
+    }
+
+    // Write firmwareVersion (12 bytes)
+    for (uint8_t j = 0; j < 12; j++) {
+      uint8_t b = g_nodes[i].firmwareVersion[j];
+      if (EEPROM.read(addr + 65 + j) != b) {
+        EEPROM.write(addr + 65 + j, b);
+        dirty = true;
+      }
+    }
+
+    // Write serialNumber (16 bytes)
+    for (uint8_t j = 0; j < 16; j++) {
+      uint8_t b = g_nodes[i].serialNumber[j];
+      if (EEPROM.read(addr + 77 + j) != b) {
+        EEPROM.write(addr + 77 + j, b);
+        dirty = true;
+      }
+    }
+
+    // Write compat (1 byte)
+    uint8_t c = (uint8_t)g_nodes[i].compat;
+    if (EEPROM.read(addr + 93) != c) {
+      EEPROM.write(addr + 93, c);
+      dirty = true;
+    }
+  }
+
+  if (dirty) EEPROM.commit();
 }

@@ -43,6 +43,13 @@ uint32_t  statusTimer         = 0;
 // Cold-boot network decision; populated in ethernetStart().
 NetworkMode networkMode       = NetworkMode::DhcpClient;
 
+// Onboarding wizard state (v1.2+). onboardingDone mirrors the EEPROM flag,
+// loaded at boot. onboardingPendingReboot is set when a wizard step would
+// normally have triggered an immediate reboot but we want to defer it until
+// the end (POST /api/onboarding-done calls this). Mirrors dualETH v7.5+.
+bool onboardingDone           = false;
+bool onboardingPendingReboot  = false;
+
 // ---------------------------------------------------------------------------
 
 void setup(void) {
@@ -73,18 +80,21 @@ void setup(void) {
   delay(1);
 
   // EEPROM.begin(N) allocates an N-byte RAM mirror in addition to the
-  // flash sector — so picking N tight matters for free heap. Current
-  // usage tops out at offset 2055; 2304 leaves a small slack for
-  // future StoreStruct growth without burning extra RAM.
+  // flash sector — so picking N tight matters for free heap. Extended
+  // to 4096 bytes (full 4 KB sector) to accommodate node registry cache.
   // Layout:
   //   0..511      StoreStruct (~140 B used)
   //   512..871    DHCP-server lease blob
-  //   1024..2055  node-tag store
-  //   2056..2303  reserved
-  EEPROM.begin(2304);
+  //   872         Node registry cache version byte (v3 = 94-byte entries)
+  //   873..3880   Node registry cache (32 nodes × 94 bytes)
+  //   3881..4095  Reserved
+  // Legacy node-tag store at 1024..2055 is deprecated in favor of
+  // LittleFS-backed tag persistence (nodeTags.cpp).
+  EEPROM.begin(4096);
   LittleFS.begin();
 
   eepromLoad();
+  onboardingFlagLoad();
   nodeTagsBegin();
 
   if (resetInfo.reason != REASON_DEFAULT_RST &&

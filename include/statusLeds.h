@@ -40,6 +40,9 @@ class StatusLeds {
   void noteNodeCounts(uint8_t known, uint8_t online);
   void noteFallbackServer(bool active);
 
+  // Trigger locate mode — rapid color flash for 10 seconds
+  void startLocate();
+
   void tick();
 
   // String form of the cached state, for /api/status. Returns a string
@@ -61,6 +64,7 @@ class StatusLeds {
   bool     fallbackServer_   = false;
   uint32_t lastTickMs_       = 0;
   State    state_            = State::Boot;
+  uint32_t locateUntilMs_    = 0;
 
   uint8_t breathe(uint32_t now, uint8_t max) const;
 };

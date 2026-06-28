@@ -131,6 +131,7 @@ void apiGetIdentify() {
       "\"nodeName\":\"%s\","
       "\"firmwareVersion\":\"" FIRMWARE_VERSION "\","
       "\"apiVersion\":1,"
+      "\"firstBoot\":%s,"
       "\"hardware\":{"
         "\"role\":\"manager\","
         "\"statusLeds\":%u"
@@ -139,6 +140,7 @@ void apiGetIdentify() {
     (unsigned)ESP.getChipId(),
     macBuf,
     deviceSettings.nodeName,
+    onboardingDone ? "false" : "true",
     (unsigned)STATUS_LED_COUNT
   );
 
@@ -245,6 +247,7 @@ void apiGetNodes() {
         "\"nodeName\":\"%s\","
         "\"deviceType\":\"%s\","
         "\"firmwareVersion\":\"%s\","
+        "\"serialNumber\":\"%s\","
         "\"online\":%s,"
         "\"compat\":\"%s\","
         "\"lastSeenSecondsAgo\":%lu"
@@ -254,6 +257,7 @@ void apiGetNodes() {
       node->nodeName,
       node->deviceType,
       node->firmwareVersion,
+      node->serialNumber,
       node->online ? "true" : "false",
       compatString(node->compat),
       (unsigned long)lastSeenSecondsAgo
@@ -326,6 +330,47 @@ void apiPostNodesLocate() {
   if (!ip.fromString(webServer.arg("ip"))) { sendError("Invalid ip"); return; }
   discoveryRequestLocate(ip);
   webServer.send(202, "application/json", "{\"success\":true,\"queued\":true}");
+}
+
+// POST /api/artdmx?net=&subnet=&universe=&len=&fill=&set=chan:val,chan:val
+// DMX test generator: build one universe frame (memset `fill`, apply `set`
+// overrides) and broadcast it as ArtDmx. Query-arg based — no JSON parsing, so
+// it's cheap on the ESP8266. Channels in `set` are 1-based.
+void apiPostArtDmx() {
+  auto argInt = [](const char* k, int def) {
+    return webServer.hasArg(k) ? webServer.arg(k).toInt() : def;
+  };
+  int net  = constrain(argInt("net", 0), 0, 127);
+  int sub  = constrain(argInt("subnet", 0), 0, 15);
+  int uni  = constrain(argInt("universe", 0), 0, 15);
+  int len  = constrain(argInt("len", 512), 2, 512);
+  int fill = constrain(argInt("fill", 0), 0, 255);
+
+  static uint8_t dmx[512];
+  memset(dmx, (uint8_t)fill, len);
+  if (webServer.hasArg("set")) {
+    String s = webServer.arg("set");
+    int i = 0;
+    while (i < (int)s.length()) {
+      int comma = s.indexOf(',', i);
+      if (comma < 0) comma = s.length();
+      int colon = s.indexOf(':', i);
+      if (colon > i && colon < comma) {
+        int ch  = s.substring(i, colon).toInt();
+        int val = s.substring(colon + 1, comma).toInt();
+        if (ch >= 1 && ch <= len) dmx[ch - 1] = (uint8_t)constrain(val, 0, 255);
+      }
+      i = comma + 1;
+    }
+  }
+  sendArtDmx((uint8_t)net, (uint8_t)sub, (uint8_t)uni, dmx, (uint16_t)len);
+  webServer.send(200, "application/json", "{\"success\":true}");
+}
+
+// GET /api/artnet-monitor — live ArtDmx activity (per universe + source IP),
+// tallied passively from broadcast traffic on the discovery socket.
+void apiGetArtnetMonitor() {
+  webServer.send(200, "application/json", artnetMonitorJson());
 }
 
 // ---------------------------------------------------------------------------
@@ -464,7 +509,20 @@ void apiPostNetwork() {
   }
 
   eepromSave();
-  sendOK(true);  // network changes always require reboot to take effect
+
+  // Onboarding-wizard defer support: if the wizard is active and the request
+  // includes "defer":true, queue the reboot for later (POST /api/onboarding-done)
+  // rather than triggering it immediately.
+  bool defer = doc["defer"].as<bool>();
+  if (defer && !onboardingDone) {
+    onboardingPendingReboot = true;
+    JsonDocument resp;
+    resp["success"] = true;
+    resp["defer"]   = true;
+    sendJson(200, resp);
+  } else {
+    sendOK(true);  // network changes always require reboot to take effect
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -520,6 +578,15 @@ void apiPostReboot() {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/locate
+// Flash the masterETH's own status LED for 10 seconds (rapid orange flash).
+// ---------------------------------------------------------------------------
+void apiPostLocate() {
+  statusLeds.startLocate();
+  sendOK(true);
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/firmware/prepare
 // Sets the doFirmwareUpdate flag and reboots; the bootloader picks it up on
 // next setup() and serves only the OTA endpoint.
@@ -529,6 +596,32 @@ void apiPostFirmwarePrepare() {
   eepromSave();
   sendOK(true);
   doReboot = true;
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/onboarding-done
+// First-boot wizard completion hook (v1.2+). Writes the magic value to the
+// EEPROM flag byte and — if any wizard step deferred a reboot — fires it now.
+// Idempotent: calling this after onboarding is already done is a no-op (the
+// flag is already 0xA5 and onboardingPendingReboot is false).
+//
+// The SPA also calls this on "Skip setup" from the welcome step, so an
+// operator who doesn't want the wizard can dismiss it forever in one click
+// without applying any changes (onboardingPendingReboot is false at that
+// point, so no reboot fires).
+// ---------------------------------------------------------------------------
+void apiPostOnboardingDone() {
+  onboardingMarkDone();
+
+  bool reboot = onboardingPendingReboot;
+  onboardingPendingReboot = false;
+
+  JsonDocument doc;
+  doc["success"] = true;
+  if (reboot) doc["reboot"] = true;
+  sendJson(200, doc);
+
+  if (reboot) doReboot = true;
 }
 
 // ---------------------------------------------------------------------------

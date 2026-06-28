@@ -32,7 +32,7 @@
 // Compile-time constants.
 // ---------------------------------------------------------------------------
 
-#define FIRMWARE_VERSION    "v1.1"
+#define FIRMWARE_VERSION    "v2.2"
 #define DEVICE_TYPE         "masterETH-Gen1"
 #define ESTA_MAN            0x7D00
 
@@ -79,6 +79,13 @@ enum class NetworkMode : uint8_t {
 };
 extern NetworkMode networkMode;
 
+// Onboarding wizard state (v1.2+). onboardingDone is hydrated from the
+// EEPROM flag in setup() via onboardingFlagLoad(); onboardingPendingReboot
+// is set when a wizard step would normally have triggered an immediate
+// reboot but we want to defer it until the end (POST /api/onboarding-done).
+extern bool onboardingDone;
+extern bool onboardingPendingReboot;
+
 // ---------------------------------------------------------------------------
 // Function declarations. Grouped by source file.
 // ---------------------------------------------------------------------------
@@ -104,6 +111,9 @@ void discoveryBegin();
 void discoveryTick();
 void discoveryRequestImmediatePoll();   // POST /api/nodes/refresh
 void discoveryRequestLocate(IPAddress ip);   // POST /api/nodes/locate
+void sendArtDmx(uint8_t net, uint8_t subnet, uint8_t universe,
+                const uint8_t* data, uint16_t len);   // DMX test generator
+const char* artnetMonitorJson();                       // GET /api/artnet-monitor
 void discoveryAnnounceTakeover();   // burst of broadcasts to refresh stale ARP caches
 // Synchronous HTTP/1.0 GET against a node, used by the node-identify proxy
 // on the management API. Blocks the loop while in flight (≤ timeoutMs).

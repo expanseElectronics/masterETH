@@ -18,13 +18,17 @@ void webStart() {
   webServer.on("/api/nodes/identify",    HTTP_GET,  apiGetNodeIdentify);
   webServer.on("/api/nodes/refresh",     HTTP_POST, apiPostNodesRefresh);
   webServer.on("/api/nodes/locate",      HTTP_POST, apiPostNodesLocate);
+  webServer.on("/api/artdmx",            HTTP_POST, apiPostArtDmx);
+  webServer.on("/api/artnet-monitor",    HTTP_GET,  apiGetArtnetMonitor);
   webServer.on("/api/tags",              HTTP_GET,  apiGetTags);
   webServer.on("/api/tags",              HTTP_POST, apiPostTags);
   webServer.on("/api/network",           HTTP_GET,  apiGetNetwork);
   webServer.on("/api/network",           HTTP_POST, apiPostNetwork);
   webServer.on("/api/dhcp-server/leases", HTTP_GET, apiGetDhcpServerLeases);
   webServer.on("/api/reboot",            HTTP_POST, apiPostReboot);
+  webServer.on("/api/locate",            HTTP_POST, apiPostLocate);
   webServer.on("/api/firmware/prepare",  HTTP_POST, apiPostFirmwarePrepare);
+  webServer.on("/api/onboarding-done",   HTTP_POST, apiPostOnboardingDone);
 
   webServer.on("/upload", HTTP_POST, webFirmwareUpdate, webFirmwareUpload);
 

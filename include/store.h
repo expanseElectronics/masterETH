@@ -49,4 +49,17 @@ extern StoreStruct deviceSettings;
 void eepromSave();
 void eepromLoad();
 
+// Onboarding wizard flag — single EEPROM byte at address 512 (past the
+// StoreStruct). 0xA5 = wizard complete, anything else = show on next boot.
+// Mirrors the dualETH v7.5+ pattern.
+#define ONBOARD_FLAG_ADDR  512
+#define ONBOARD_FLAG_MAGIC 0xA5
+
+// onboardingFlagLoad() — read EEPROM byte 512 into the `onboardingDone`
+// global (declared extern in manager.h, defined in main.cpp).
+// onboardingMarkDone() — write the magic value, commit, and update the
+// global. Called by POST /api/onboarding-done.
+void onboardingFlagLoad();
+void onboardingMarkDone();
+
 #endif // STORE_H

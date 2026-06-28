@@ -550,6 +550,81 @@ dialog::backdrop { background: rgba(0,0,0,0.65); }
 #rebootingMsg h2 { font-family: var(--mono); color: var(--warn); margin-bottom: 8px; }
 #rebootingMsg p { color: var(--text-dim); font-size: 13px; }
 
+/* ── Onboarding wizard overlay ──────────────────────────────── */
+.onboard-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.onboard-overlay.hidden { display: none !important; }
+.onboard-overlay.leaving { animation: onboard-fade 420ms ease forwards; }
+@keyframes onboard-fade {
+  to { opacity: 0; pointer-events: none; }
+}
+
+.onboard-card {
+  width: 100%; max-width: 560px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 36px;
+}
+
+.onboard-dots {
+  display: flex; gap: 6px; margin-bottom: 28px;
+}
+.onboard-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--border2);
+  transition: background 0.15s, transform 0.15s;
+}
+.onboard-dot.done    { background: var(--accent); opacity: 0.5; }
+.onboard-dot.current { background: var(--accent); transform: scale(1.3); }
+
+.onboard-step { animation: onboard-slide 220ms ease; }
+@keyframes onboard-slide {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.onboard-headline {
+  font-family: var(--mono); font-size: 20px; font-weight: 700;
+  color: var(--text); margin-bottom: 8px;
+}
+.onboard-headline span { color: var(--accent); }
+.onboard-body-text {
+  color: var(--text-dim); font-size: 13px; margin-bottom: 24px;
+}
+.onboard-actions {
+  margin-top: 24px;
+  display: flex; gap: 10px;
+  justify-content: space-between; align-items: center;
+}
+.onboard-actions .spacer { flex: 1; }
+.onboard-hint {
+  font-size: 11px; color: var(--text-dim);
+  font-style: italic; margin-top: 12px;
+}
+
+.led-legend { margin-top: 4px; }
+.led-legend-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.led-legend-row:last-child { border-bottom: none; }
+.led-legend-row .led-dot {
+  width: 14px; height: 14px; flex-shrink: 0;
+  border-radius: 50%;
+}
+.led-legend-text {
+  font-size: 12px; color: var(--text);
+}
+.led-legend-text strong {
+  color: var(--text); font-weight: 600;
+}
+
 @media (max-width: 640px) {
   :root { --sidebar-w: 180px; }
   #content { padding: 20px; }
@@ -566,6 +641,30 @@ dialog::backdrop { background: rgba(0,0,0,0.65); }
   nav a.active { border-left: none; border-bottom-color: var(--accent); }
   .sidebar-footer { display: none; }
 }
+
+/* ── OLED live mirror (quadETH Display tab) ──────────────────────────── */
+.oled-screen {
+  display: inline-block; padding: 18px; background: #0b0b0b;
+  border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: inset 0 0 0 2px #000, 0 8px 28px rgba(0,0,0,.6);
+}
+#oledCanvas {
+  display: block; width: 512px; height: 256px;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  border-radius: 2px; background: #05080c;
+}
+@media (max-width: 720px) { #oledCanvas { width: 100%; height: auto; } }
+.heartbeat {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.hb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); opacity: .4; }
+.heartbeat.pulse .hb-dot { animation: hbp 1.4s ease-out; }
+@keyframes hbp { 0% { opacity: 1; transform: scale(1.6); } 100% { opacity: .4; transform: scale(1); } }
+.screen-toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.screen-toggles label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
+input[type=range] { accent-color: var(--accent); width: 220px; vertical-align: middle; }
   </style>
 </head>
 <body>
@@ -578,6 +677,8 @@ dialog::backdrop { background: rgba(0,0,0,0.65); }
       <nav id="nav">
         <a href="#" data-page="nodes"    class="active">Nodes</a>
         <a href="#" data-page="universes">Universes</a>
+        <a href="#" data-page="test">DMX Test</a>
+        <a href="#" data-page="monitor">Monitor</a>
         <a href="#" data-page="network">IP &amp; Network</a>
         <a href="#" data-page="system">System</a>
         <a href="#" data-page="firmware">Firmware</a>
@@ -601,6 +702,12 @@ dialog::backdrop { background: rgba(0,0,0,0.65); }
       </div>
     </div>
   </dialog>
+  <div id="onboard" class="onboard-overlay hidden">
+    <div class="onboard-card">
+      <div class="onboard-dots" id="onboardDots"></div>
+      <div id="onboardBody"></div>
+    </div>
+  </div>
   <div id="toast"></div>
   <script>
 'use strict';
@@ -609,6 +716,13 @@ const $ = id => document.getElementById(id);
 const content = $('content');
 let currentPage = 'nodes';
 let pollTimer = null;
+let oledTimer = null;   // /api/oled poll on the quadETH Display tab
+
+// quadETH nodes expose 4 symmetric ports + an OLED + factory-reset; dualETH
+// has 2 ports and none of the above. Detection is by deviceType prefix from
+// the registry (reliable; set on identify).
+function isQuadNode(n) { return /^quadETH/i.test((n && n.deviceType) || ''); }
+function portLettersFor(n) { return isQuadNode(n) ? ['A', 'B', 'C', 'D'] : ['A', 'B']; }
 
 function toast(msg, type = 'ok', duration = 3000) {
   const t = $('toast');
@@ -632,6 +746,19 @@ async function api(method, path, body) {
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatTimeSince(seconds) {
+  if (seconds < 60) return seconds + 's';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return m + 'm ' + s + 's';
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  if (h < 24) return h + 'h ' + mm + 'm';
+  const d = Math.floor(h / 24);
+  const hh = h % 24;
+  return d + 'd ' + hh + 'h';
 }
 
 function ipInputs(name, values) {
@@ -692,7 +819,12 @@ async function nodeApi(method, ip, path, body) {
     }
     const r = await fetch(url, opts);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
+    // Most node endpoints return JSON, but some reply text/plain (e.g. the
+    // quadETH RDM discover → "started"). Tolerate both: parse JSON when we can,
+    // else hand back { text }.
+    const txt = await r.text();
+    if (!txt) return {};
+    try { return JSON.parse(txt); } catch (_) { return { text: txt }; }
   };
   const prev = nodeRequestQueues.get(ip) || Promise.resolve();
   // .catch swallow on the prev tail so a failure doesn't poison the chain.
@@ -818,18 +950,20 @@ function drawSparkline(canvas, values, opts = {}) {
 function refreshSparklines(mac) {
   const cache = nodeStatusCache.get(mac);
   if (!cache || !cache.history.length) return;
-  const heap = cache.history.map(h => h.heap);
-  const a    = cache.history.map(h => h.a);
-  const b    = cache.history.map(h => h.b);
-  drawSparkline($('sparkHeap'), heap, { color: '#5eead4', min: 0 });
-  drawSparkline($('sparkA'),    a,    { color: '#22cc77', min: 0 });
-  drawSparkline($('sparkB'),    b,    { color: '#22cc77', min: 0 });
-
   const last = cache.history[cache.history.length - 1];
   const setText = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+
+  drawSparkline($('sparkHeap'), cache.history.map(h => h.heap), { color: '#5eead4', min: 0 });
   setText('sparkHeapVal', `${(last.heap / 1024).toFixed(1)} KB`);
-  setText('sparkAVal',    `${last.a} pkt/s`);
-  setText('sparkBVal',    `${last.b} pkt/s`);
+
+  // One sparkline per port the node exposes (A/B dualETH, A–D quadETH). The
+  // trends section renders matching canvases for the node on screen.
+  const ports = (detailNode && detailNode.mac === mac) ? portLettersFor(detailNode) : ['A', 'B'];
+  ports.forEach(L => {
+    const series = cache.history.map(h => (h.rates && h.rates[L]) || 0);
+    drawSparkline($('spark' + L), series, { color: '#22cc77', min: 0 });
+    setText('spark' + L + 'Val', `${(last.rates && last.rates[L]) || 0} pkt/s`);
+  });
 }
 
 // ── Status poller ────────────────────────────────────────────────────────────
@@ -855,10 +989,12 @@ async function pollOneNodeStatus(n) {
     const cache = nodeStatusCache.get(n.mac) || { history: [] };
     cache.lastFetch = Date.now();
     cache.data      = data;
+    const act = portActivityFromStatus(data);
+    const rates = {};
+    Object.keys(act).forEach(L => { rates[L] = act[L].rate; });
     cache.history.push({
       t: cache.lastFetch,
-      a: data.portARate || 0,
-      b: data.portBRate || 0,
+      rates,
       heap: data.freeHeap || 0,
     });
     while (cache.history.length > STATUS_HISTORY_MAX) cache.history.shift();
@@ -902,6 +1038,23 @@ function shortMode(s) {
   return s;
 }
 
+// Normalize per-port live activity from a /api/status snapshot into
+// { A: {rate, status}, ... }. quadETH reports a ports[] array (name / rate /
+// status); dualETH reports portARate / portAStatus scalars. Returns whatever
+// ports the node exposes, so callers can iterate generically.
+function portActivityFromStatus(s) {
+  const out = {};
+  if (s && Array.isArray(s.ports)) {
+    s.ports.forEach(p => {
+      if (p.name) out[p.name] = { rate: p.rate || 0, status: p.status || '' };
+    });
+  } else if (s) {
+    out.A = { rate: s.portARate || 0, status: s.portAStatus || '' };
+    out.B = { rate: s.portBRate || 0, status: s.portBStatus || '' };
+  }
+  return out;
+}
+
 function liveStrip(n) {
   // Per-row activity strip: pulled from the cached /api/status snapshot.
   // Empty string when no data yet — the row still renders cleanly with
@@ -909,17 +1062,15 @@ function liveStrip(n) {
   if (n.compat !== 'compatible' || !n.online) return '';
   const cache = nodeStatusCache.get(n.mac);
   if (!cache || !cache.data) return '';
-  const s = cache.data;
-  const aActive = (s.portARate || 0) > 0;
-  const bActive = (s.portBRate || 0) > 0;
+  const act = portActivityFromStatus(cache.data);
   return `
     <div class="live-strip">
-      <span class="port"><span class="ldot${aActive ? ' active' : ''}"></span>
-        <span class="m">A · ${esc(shortMode(s.portAStatus))}</span>
-        <span class="r">${s.portARate || 0}/s</span></span>
-      <span class="port"><span class="ldot${bActive ? ' active' : ''}"></span>
-        <span class="m">B · ${esc(shortMode(s.portBStatus))}</span>
-        <span class="r">${s.portBRate || 0}/s</span></span>
+      ${portLettersFor(n).map(L => {
+        const p = act[L] || { rate: 0, status: '' };
+        return `<span class="port"><span class="ldot${p.rate > 0 ? ' active' : ''}"></span>
+          <span class="m">${L} · ${esc(shortMode(p.status))}</span>
+          <span class="r">${p.rate}/s</span></span>`;
+      }).join('')}
     </div>`;
 }
 
@@ -1016,7 +1167,7 @@ async function renderNodes() {
             <span class="ip">${esc(n.ip)}</span>
             ${n.deviceType ? '<span>' + esc(n.deviceType) + '</span>' : ''}
             ${n.firmwareVersion ? '<span>' + esc(n.firmwareVersion) + '</span>' : ''}
-            <span>${n.online ? 'online' : 'offline · seen ' + n.lastSeenSecondsAgo + 's ago'}</span>
+            <span>${n.online ? 'online' : 'offline · seen ' + formatTimeSince(n.lastSeenSecondsAgo) + ' ago'}</span>
           </div>
           ${liveStrip(n)}
         </div>
@@ -1209,13 +1360,22 @@ async function renderNodeDetail(ip, tab) {
     return;
   }
 
-  // Configuration tab is only meaningful for compatible nodes (readonly
-  // v7.3 nodes can't accept POSTs cross-origin). If the URL says config
-  // but the node can't take it, fall back to identity silently.
-  const configAvailable = n.compat === 'compatible';
+  // Configuration tab is only meaningful for compatible nodes that are
+  // online (readonly v7.3 nodes can't accept POSTs cross-origin, and
+  // offline nodes can't be configured). If the URL says config but the
+  // node can't take it, fall back to identity silently.
+  detailNode = n;
+  const configAvailable = n.compat === 'compatible' && n.online;
+  const isQuad = isQuadNode(n);
+  const displayAvailable = configAvailable && isQuad;
+  const rdmAvailable = configAvailable && isQuad;     // RDM controller is quadETH-only
+  const scenesAvailable = configAvailable && isQuad;  // FRAM scenes are quadETH-only
   if (tab === 'config' && !configAvailable) tab = 'identity';
+  if (tab === 'display' && !displayAvailable) tab = 'identity';
+  if (tab === 'rdm' && !rdmAvailable) tab = 'identity';
+  if (tab === 'scenes' && !scenesAvailable) tab = 'identity';
 
-  const onlineSv  = n.online ? `<span class="dot ok"></span> Online` : `<span class="dot"></span> Offline · seen ${n.lastSeenSecondsAgo}s ago`;
+  const onlineSv  = n.online ? `<span class="dot ok"></span> Online` : `<span class="dot"></span> Offline · seen ${formatTimeSince(n.lastSeenSecondsAgo)} ago`;
   const onlineCls = n.online ? 'ok' : 'dim';
 
   const tag = getTag(n.mac);
@@ -1244,6 +1404,15 @@ async function renderNodeDetail(ip, tab) {
       ${configAvailable
         ? `<button class="tab-btn ${tab === 'config' ? 'active' : ''}" data-tab="config">Configuration</button>`
         : ''}
+      ${rdmAvailable
+        ? `<button class="tab-btn ${tab === 'rdm' ? 'active' : ''}" data-tab="rdm">RDM</button>`
+        : ''}
+      ${scenesAvailable
+        ? `<button class="tab-btn ${tab === 'scenes' ? 'active' : ''}" data-tab="scenes">Scenes</button>`
+        : ''}
+      ${displayAvailable
+        ? `<button class="tab-btn ${tab === 'display' ? 'active' : ''}" data-tab="display">Display</button>`
+        : ''}
     </div>
 
     <div class="tab-pane" data-tab="identity" style="${tab === 'identity' ? '' : 'display:none'}">
@@ -1256,26 +1425,28 @@ async function renderNodeDetail(ip, tab) {
           <div class="sk">Node Name</div>       <div class="sv">${esc(n.nodeName) || '<span class="dim">—</span>'}</div>
           <div class="sk">Device Type</div>     <div class="sv">${esc(n.deviceType) || '<span class="dim">—</span>'}</div>
           <div class="sk">Firmware</div>        <div class="sv">${esc(n.firmwareVersion) || '<span class="dim">—</span>'}</div>
+          <div class="sk">Serial Number</div>   <div class="sv">${esc(n.serialNumber) || '<span class="dim">—</span>'}</div>
           <div class="sk">Compatibility</div>   <div class="sv">${compatTag(n.compat)}</div>
         </div>
       </div>
 
       <div id="hardwareSection">
-        ${(n.compat === 'compatible' || n.compat === 'readonly')
+        ${(n.compat === 'compatible' || n.compat === 'readonly') && n.online
           ? '<div class="subsection"><div class="section-section-title">Hardware</div><div class="loading" style="padding:16px 0">Fetching live identify…</div></div>'
           : ''}
       </div>
 
-      ${(n.compat === 'compatible' || n.compat === 'readonly') ? `
+      <div id="telemetrySection"></div>
+
+      ${(n.compat === 'compatible' || n.compat === 'readonly') && n.online ? `
       <div class="subsection" id="trendsSection">
         <div class="section-section-title">Live trends · last 5 min</div>
         <div class="status-grid" style="grid-template-columns: 160px 1fr">
           <div class="sk">Free heap</div>
           <div class="sv"><canvas id="sparkHeap" width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="sparkHeapVal"></span></div>
-          <div class="sk">Port A pkt/s</div>
-          <div class="sv"><canvas id="sparkA"    width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="sparkAVal"></span></div>
-          <div class="sk">Port B pkt/s</div>
-          <div class="sv"><canvas id="sparkB"    width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="sparkBVal"></span></div>
+          ${portLettersFor(n).map(L => `
+          <div class="sk">Port ${L} pkt/s</div>
+          <div class="sv"><canvas id="spark${L}" width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="spark${L}Val"></span></div>`).join('')}
         </div>
       </div>` : ''}
 
@@ -1309,10 +1480,11 @@ async function renderNodeDetail(ip, tab) {
           </p>
         </div>` : ''}
 
+      ${n.online ? `
       <div class="btn-row">
-        <button class="btn btn-secondary" id="locateBtn" data-ip="${esc(n.ip)}">Locate (flash LED)</button>
+        <button class="btn btn-secondary" id="locateBtn" data-ip="${esc(n.ip)}">Locate (flash 10s)</button>
         <a class="btn btn-secondary" href="http://${esc(n.ip)}/api/identify" target="_blank" rel="noreferrer">Raw /api/identify</a>
-      </div>
+      </div>` : ''}
     </div>
 
     ${configAvailable ? `
@@ -1322,6 +1494,28 @@ async function renderNodeDetail(ip, tab) {
       </div>
       <div class="btn-row">
         <button class="btn btn-danger" id="rebootNodeBtn">Reboot Node</button>
+        ${isQuad ? `<button class="btn btn-danger" id="factoryResetBtn">Factory Reset</button>` : ''}
+      </div>
+    </div>` : ''}
+
+    ${rdmAvailable ? `
+    <div class="tab-pane" data-tab="rdm" style="${tab === 'rdm' ? '' : 'display:none'}">
+      <div id="rdmPane">
+        <div class="loading" style="padding:24px 0">Loading RDM…</div>
+      </div>
+    </div>` : ''}
+
+    ${scenesAvailable ? `
+    <div class="tab-pane" data-tab="scenes" style="${tab === 'scenes' ? '' : 'display:none'}">
+      <div id="scenesPane">
+        <div class="loading" style="padding:24px 0">Loading scenes…</div>
+      </div>
+    </div>` : ''}
+
+    ${displayAvailable ? `
+    <div class="tab-pane" data-tab="display" style="${tab === 'display' ? '' : 'display:none'}">
+      <div id="displayPane">
+        <div class="loading" style="padding:24px 0">Loading display…</div>
       </div>
     </div>` : ''}`;
 
@@ -1351,9 +1545,11 @@ async function renderNodeDetail(ip, tab) {
 
   // Compatible nodes get the live identify fetch (for the Identity tab's
   // Hardware block) and the editable config (for the Configuration tab).
-  // Readonly nodes get only the identify fetch.
-  if (n.compat === 'compatible' || n.compat === 'readonly') {
+  // Readonly nodes get only the identify fetch. Skip if offline.
+  if ((n.compat === 'compatible' || n.compat === 'readonly') && n.online) {
     await fetchLiveIdentifyWithResync(n);
+    if (currentPage !== 'node-detail') return;
+    renderTelemetry(n);        // async, fills #telemetrySection (best-effort)
   }
   if (currentPage !== 'node-detail') return;
   wireLocateButton();
@@ -1364,8 +1560,17 @@ async function renderNodeDetail(ip, tab) {
     await wireEditForms(n);
     if (currentPage !== 'node-detail') return;
     wireRebootButton(n);
+    if (isQuad) wireFactoryResetButton(n);
   }
+  // Deep link straight to the Display / RDM tab — start them now.
+  if (displayAvailable && tab === 'display') renderDisplayTab(n);
+  if (rdmAvailable && tab === 'rdm') renderRdmTab(n);
+  if (scenesAvailable && tab === 'scenes') renderScenesTab(n);
 }
+
+// The node whose detail page is currently rendered. Lets switchDetailTab
+// lazily start the Display tab's OLED mirror without a re-fetch of /api/nodes.
+let detailNode = null;
 
 function switchDetailTab(tab, ip) {
   content.querySelectorAll('.tab-pane').forEach(el => {
@@ -1376,6 +1581,17 @@ function switchDetailTab(tab, ip) {
   });
   const newHash = '#node/' + ip + (tab === 'identity' ? '' : '/' + tab);
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
+
+  // The OLED mirror only polls while its tab is visible — stop on leave,
+  // (re)start on enter.
+  if (tab === 'display' && detailNode) renderDisplayTab(detailNode);
+  else stopOledMirror();
+
+  // Same for the RDM discovery poll.
+  if (tab === 'rdm' && detailNode) renderRdmTab(detailNode);
+  else stopRdmPoll();
+
+  if (tab === 'scenes' && detailNode) renderScenesTab(detailNode);
 }
 
 // Live-identify with two robustness behaviors layered on:
@@ -1421,6 +1637,7 @@ async function fetchLiveIdentifyWithResync(n) {
   }
   if (currentPage !== 'node-detail') return;
 
+  n._identify = id;            // retained for portModesFor() (portCapabilities) + telemetry
   renderHardwareSection(id);
 }
 
@@ -1433,6 +1650,37 @@ const PORT_MODES = [
   { v: 3, label: 'WS2812 Pixels' },
 ];
 const PORT_MODE_WS2812 = 3;
+// quadETH has NO WS2812 mode. Its enum: 0=DMX Out, 1=DMX Out+RDM, 2=DMX In,
+// 3=Scene Output (set on the node's own Scenes tab). Mode dropdowns for a
+// quadETH are built from the node's reported portCapabilities, never the
+// dualETH PORT_MODES (whose v:3 is WS2812).
+const QUAD_PORT_MODES = [
+  { v: 0, label: 'DMX Output' },
+  { v: 1, label: 'DMX Output + RDM' },
+  { v: 2, label: 'DMX Input' },
+];
+const QUAD_MODE_SCENE = 3;
+const QUAD_CAP_TO_MODE = { dmx_out: 0, rdm_out: 1, dmx_in: 2 };
+function quadModeFromCap(s) {
+  const v = QUAD_CAP_TO_MODE[s];
+  return v == null ? null : QUAD_PORT_MODES.find(m => m.v === v);
+}
+// The mode <option> list for a node's port. quadETH: from the live identify's
+// portCapabilities (falls back to the symmetric 3-mode list); a current Scene
+// Output selection is preserved so editing another field can't silently flip it.
+function portModesFor(n, port, cfg) {
+  if (isQuadNode(n)) {
+    const caps = (n._identify && n._identify.hardware && n._identify.hardware.portCapabilities) || [];
+    const pc = caps.find(c => c.port === port);
+    let list = (pc && Array.isArray(pc.modes) && pc.modes.length)
+      ? pc.modes.map(quadModeFromCap).filter(Boolean)
+      : QUAD_PORT_MODES.slice();
+    if (cfg && cfg.mode === QUAD_MODE_SCENE && !list.find(m => m.v === QUAD_MODE_SCENE))
+      list = list.concat([{ v: QUAD_MODE_SCENE, label: 'Scene Output (set on node)' }]);
+    return list;
+  }
+  return port === 'A' ? PORT_MODES : PORT_MODES.filter(m => m.v !== 1 && m.v !== 2);
+}
 const PROTOCOLS = [
   { v: 0, label: 'Art-Net' },
   { v: 1, label: 'Art-Net + sACN' },
@@ -1475,11 +1723,13 @@ async function fetchNetworkConfig(ip) {
 async function wireEditForms(n) {
   // Reset the per-port cfg cache each time we render a detail page —
   // otherwise a stale entry from a previous node would leak into the
-  // pass-through merge on save.
-  portCfgCache.A = null;
-  portCfgCache.B = null;
+  // pass-through merge on save. Reset every possible port (A–D) so a
+  // quadETH's C/D don't carry over to a later dualETH render and vice versa.
+  ['A', 'B', 'C', 'D'].forEach(p => { portCfgCache[p] = null; });
   const slot = $('editForms');
   if (!slot) return;
+
+  const ports = portLettersFor(n);  // ['A','B'] dualETH, ['A','B','C','D'] quadETH
 
   // Loading skeleton — these forms need data from the node, fetched
   // cross-origin. Each takes one round-trip.
@@ -1489,21 +1739,25 @@ async function wireEditForms(n) {
       <div class="loading" style="padding:8px 0">Fetching node config…</div>
     </div>`;
 
-  // Serialize. The dualETH's webServer is single-listener / single-
-  // socket — while it's processing one HTTP request, the listening
-  // socket is busy and parallel connect attempts are TCP-refused
-  // before they make it into the server's request queue. Browsers
-  // surface that as a fetch error ("Load failed" in Safari) without
-  // any logged response. Doing each fetch in turn (~10 ms apiece on
-  // a healthy LAN) costs ~30 ms total but actually completes.
-  const net   = await fetchNetworkConfig(n.ip);
-  if (currentPage !== 'node-detail') return;
-  const portA = await fetchPortConfig(n.ip, 'A');
-  if (currentPage !== 'node-detail') return;
-  const portB = await fetchPortConfig(n.ip, 'B');
+  // Serialize with small delays. The dualETH's webServer is single-
+  // listener / single-socket — while processing one HTTP request, the
+  // listening socket is busy and parallel connect attempts are TCP-
+  // refused before they make it into the server's request queue.
+  // Browsers surface that as a fetch error ("Load failed" in Safari)
+  // without any logged response. Doing each fetch in turn with 50ms
+  // gaps gives the node time to fully close each connection.
+  const net = await fetchNetworkConfig(n.ip);
   if (currentPage !== 'node-detail') return;
 
-  if (!net && !portA && !portB) {
+  const portCfgs = {};
+  for (const p of ports) {
+    await new Promise(r => setTimeout(r, 50));
+    portCfgs[p] = await fetchPortConfig(n.ip, p);
+    if (currentPage !== 'node-detail') return;
+  }
+
+  const anyPort = ports.some(p => portCfgs[p]);
+  if (!net && !anyPort) {
     slot.innerHTML = `
       <div class="subsection">
         <div class="section-section-title">Edit</div>
@@ -1513,14 +1767,12 @@ async function wireEditForms(n) {
     return;
   }
 
-  slot.innerHTML = `
-    ${net ? renderNetworkForm(n, net) : ''}
-    ${portA ? renderPortForm(n, 'A', portA) : ''}
-    ${portB ? renderPortForm(n, 'B', portB) : ''}`;
+  slot.innerHTML =
+    (net ? renderNetworkForm(n, net) : '') +
+    ports.map(p => portCfgs[p] ? renderPortForm(n, p, portCfgs[p]) : '').join('');
 
-  if (net)   wireNetworkForm(n);
-  if (portA) wirePortForm(n, 'A');
-  if (portB) wirePortForm(n, 'B');
+  if (net) wireNetworkForm(n);
+  ports.forEach(p => { if (portCfgs[p]) wirePortForm(n, p); });
 }
 
 function renderNetworkForm(n, net) {
@@ -1545,7 +1797,9 @@ function renderNetworkForm(n, net) {
     </div>`;
 }
 
-function modeLabel(mode) {
+function modeLabel(mode, n) {
+  if (n && isQuadNode(n))
+    return ({ 0: 'DMX Output', 1: 'DMX Output + RDM', 2: 'DMX Input', 3: 'Scene Output' })[mode] || 'Unknown';
   const m = PORT_MODES.find(x => x.v === mode);
   return m ? m.label : 'Unknown';
 }
@@ -1554,15 +1808,17 @@ function renderPortForm(n, port, cfg) {
   // Stash the full cfg so the submit handler can preserve fields the
   // form doesn't expose (see portCfgCache comment above).
   portCfgCache[port] = cfg;
-  const isPortA = port === 'A';
-  const modes = isPortA ? PORT_MODES : PORT_MODES.filter(m => m.v !== 1 && m.v !== 2);
-  const isWS = cfg.mode === PORT_MODE_WS2812;
+  // Mode options come from portModesFor(): quadETH is driven off the node's
+  // portCapabilities (no WS2812), dualETH keeps its Port-A/B split. WS2812 rows
+  // only ever apply to dualETH.
+  const modes = portModesFor(n, port, cfg);
+  const isWS = !isQuadNode(n) && cfg.mode === PORT_MODE_WS2812;
   const portIdSuffix = port.toLowerCase();
   return `
     <div class="config-section">
       <div class="port-heading">
         <span class="port-label">Port ${esc(port)}</span>
-        <span class="port-mode" id="port${esc(port)}ModeTag">${esc(modeLabel(cfg.mode))}</span>
+        <span class="port-mode" id="port${esc(port)}ModeTag">${esc(modeLabel(cfg.mode, n))}</span>
       </div>
       <form id="port${esc(port)}EditForm" data-port="${esc(port)}">
         <div class="status-grid">
@@ -1579,6 +1835,7 @@ function renderPortForm(n, port, cfg) {
           <div class="sk">Universe</div>
           <div class="sv"><input type="number" name="universe" value="${(cfg.universe && cfg.universe[0]) || 0}" min="0" max="15"></div>
         </div>
+        ${isQuadNode(n) ? '' : `
         <div id="ws-${portIdSuffix}-rows" style="margin-top:14px${isWS ? '' : ';display:none'}">
           <div class="section-section-title">WS2812</div>
           <div class="status-grid">
@@ -1590,7 +1847,7 @@ function renderPortForm(n, port, cfg) {
             <div class="sk">Pixel Mode</div>
             <div class="sv"><select name="pixelMode">${selectOptions(PIXEL_MODES, cfg.pixelMode || 0)}</select></div>
           </div>
-        </div>
+        </div>`}
         <div class="btn-row">
           <button type="submit" class="btn-primary">Save Port ${esc(port)}</button>
           <span class="save-status" id="port${esc(port)}EditStatus"></span>
@@ -1636,9 +1893,9 @@ function wirePortForm(n, port) {
   f.querySelector('[data-port-mode]').addEventListener('change', function() {
     const m = parseInt(this.value, 10);
     const wsRows = document.getElementById('ws-' + portIdSuffix + '-rows');
-    if (wsRows) wsRows.style.display = m === PORT_MODE_WS2812 ? '' : 'none';
+    if (wsRows) wsRows.style.display = (!isQuadNode(n) && m === PORT_MODE_WS2812) ? '' : 'none';
     const tag = document.getElementById('port' + port + 'ModeTag');
-    if (tag) tag.textContent = modeLabel(m);
+    if (tag) tag.textContent = modeLabel(m, n);
   });
 
   f.addEventListener('submit', async e => {
@@ -1669,7 +1926,7 @@ function wirePortForm(n, port) {
       cachedUni[2] != null ? cachedUni[2] : Math.min(15, u + 2),
       cachedUni[3] != null ? cachedUni[3] : Math.min(15, u + 3),
     ];
-    if (mode === PORT_MODE_WS2812) {
+    if (!isQuadNode(n) && mode === PORT_MODE_WS2812) {
       body.numPixels = parseInt(f.numPixels.value, 10) || 0;
       body.pixelMode = parseInt(f.pixelMode.value, 10) || 0;
       // pixelFXstart stays cached — FX12 detail editing is link-out
@@ -1713,6 +1970,193 @@ function wireRebootButton(n) {
   });
 }
 
+// ── Factory Reset (quadETH only) ─────────────────────────────────────────────
+function wireFactoryResetButton(n) {
+  const btn = $('factoryResetBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!confirm('Factory reset ' + (n.nodeName || n.ip) + '?\n\n' +
+      'This erases ALL settings on the node — network, ports, display and ' +
+      'onboarding — and restarts it with factory defaults. This cannot be undone.')) return;
+    btn.disabled = true;
+    try {
+      await nodeApi('POST', n.ip, '/api/factory-reset', {});
+      toast('Factory reset sent — node is restarting with defaults', 'warn', 8000);
+      setTimeout(() => { location.hash = '#nodes'; }, 8000);
+    } catch(err) {
+      toast('Factory reset failed: ' + err.message, 'err');
+      btn.disabled = false;
+    }
+  });
+}
+
+// ── Display tab: OLED live mirror + settings (quadETH only) ───────────────────
+
+// Panel-controller names (fallback if the node doesn't send panelNames).
+const OLED_PANELS = ['SH1107', 'SH1106', 'SSD1309'];
+
+function renderDisplayTab(n) {
+  const pane = $('displayPane');
+  if (!pane) return;
+  pane.innerHTML = `
+    <div class="subsection">
+      <div class="section-section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Live Display</span>
+        <span class="heartbeat" id="oledHb"><span class="hb-dot"></span>live</span>
+      </div>
+      <p style="font-size:13px;color:var(--text-dim);margin:0 0 14px">
+        Live mirror of the node's on-board 128×64 display. The same framebuffer
+        drives this preview and the physical panel, so it matches exactly.
+      </p>
+      <div class="oled-screen"><canvas id="oledCanvas" width="128" height="64"></canvas></div>
+    </div>
+    <div id="displaySettings" class="subsection">
+      <div class="section-section-title">Display Settings</div>
+      <div class="loading" style="padding:8px 0">Fetching display config…</div>
+    </div>`;
+
+  // Start the live mirror immediately, then load the settings form.
+  stopOledMirror();
+  pollOled(n.ip);
+  oledTimer = setInterval(() => pollOled(n.ip), 1000);
+
+  fetchDisplayConfig(n.ip).then(d => {
+    if (currentPage !== 'node-detail') return;
+    if (!d) {
+      const s = $('displaySettings');
+      if (s) s.innerHTML = `
+        <div class="section-section-title">Display Settings</div>
+        <p style="font-size:13px;color:var(--err)">Could not fetch display config.</p>`;
+      return;
+    }
+    renderDisplaySettings(n, d);
+  });
+}
+
+async function fetchDisplayConfig(ip) {
+  try { return await nodeApi('GET', ip, '/api/display'); }
+  catch(e) { return null; }
+}
+
+function renderDisplaySettings(n, d) {
+  const s = $('displaySettings');
+  if (!s) return;
+  displayCfgCache = d;  // pass-through baseline for save
+  const names   = d.names   || ['Identity', 'Network', 'Ports', 'System'];
+  const screens = d.screens || names.map(() => true);
+  const panels  = d.panelNames || OLED_PANELS;
+  const contrast = d.contrast != null ? d.contrast : 255;
+  const dwellSec = Math.round((d.dwellMs || 4000) / 1000);
+
+  const toggles = names.map((nm, i) =>
+    `<label><input type="checkbox" class="scr" data-i="${i}" ${screens[i] ? 'checked' : ''}> ${esc(nm)}</label>`
+  ).join('');
+
+  const panelOpts = panels.map((p, j) =>
+    `<option value="${j}" ${d.panel === j ? 'selected' : ''}>${esc(p)}</option>`
+  ).join('');
+
+  s.innerHTML = `
+    <div class="section-section-title">Display Settings</div>
+    <form id="displayForm">
+      <div class="status-grid">
+        <div class="sk">Display on</div>
+        <div class="sv"><input type="checkbox" id="dEnabled" ${d.enabled ? 'checked' : ''}></div>
+        <div class="sk">Auto-cycle screens</div>
+        <div class="sv"><input type="checkbox" id="dCycle" ${d.cycle ? 'checked' : ''}></div>
+        <div class="sk">Seconds per screen</div>
+        <div class="sv"><input type="number" id="dDwell" min="1" max="60" value="${dwellSec}"></div>
+        <div class="sk">Brightness</div>
+        <div class="sv"><input type="range" id="dBri" min="0" max="255" value="${contrast}">
+          <span class="hint">physical panel only</span></div>
+        <div class="sk">Visible screens</div>
+        <div class="sv"><div class="screen-toggles">${toggles}</div></div>
+        <div class="sk">Panel type</div>
+        <div class="sv"><select id="dPanel">${panelOpts}</select>
+          <span class="hint">applied on reboot</span></div>
+      </div>
+      <div class="btn-row">
+        <button type="submit" class="btn-primary">Save Display</button>
+        <span class="save-status" id="displayStatus"></span>
+        <span id="displayRebootHint" style="display:none;font-size:12px;color:var(--warn)">Reboot to apply</span>
+      </div>
+    </form>`;
+
+  $('displayForm').addEventListener('submit', e => { e.preventDefault(); saveDisplay(n); });
+}
+
+// Pass-through baseline for the display POST so fields the form doesn't
+// expose (e.g. `on`) survive a save. Reset implicitly each render.
+let displayCfgCache = {};
+
+async function saveDisplay(n) {
+  const screens = [];
+  document.querySelectorAll('#displayForm .scr').forEach(c => { screens[+c.dataset.i] = c.checked; });
+  const body = {
+    ...displayCfgCache,
+    enabled:  $('dEnabled').checked,
+    cycle:    $('dCycle').checked,
+    dwellMs:  (parseInt($('dDwell').value, 10) || 4) * 1000,
+    contrast: parseInt($('dBri').value, 10),
+    panel:    parseInt($('dPanel').value, 10),
+    screens,
+  };
+  try {
+    const r = await nodeApi('POST', n.ip, '/api/display', body);
+    if (r && r.success === false) throw new Error(r.error || 'unknown');
+    showSaved('displayStatus');
+    toast('Display saved');
+    if (r && r.reboot) {
+      const hint = $('displayRebootHint');
+      if (hint) hint.style.display = '';
+    }
+  } catch(err) {
+    toast('Save failed: ' + err.message, 'err');
+  }
+}
+
+let oledInFlight = false;
+async function pollOled(ip) {
+  // Don't queue a second request behind an unfinished one — masterETH
+  // serializes all requests to a given IP, so a slow node would otherwise
+  // build an unbounded backlog at the 1 s interval.
+  if (oledInFlight) return;
+  oledInFlight = true;
+  let d;
+  try { d = await nodeApi('GET', ip, '/api/oled'); }
+  catch(e) { return; }
+  finally { oledInFlight = false; }
+  if (currentPage !== 'node-detail') return;
+  drawOled(d.fb, d.w || 128, d.h || 64);
+  const hb = $('oledHb');
+  if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
+}
+
+// Decode the base64 framebuffer (row-major, 1bpp, MSB = leftmost pixel,
+// w/8 bytes per row) onto the 128×64 canvas. On pixels render in the
+// accent-cyan the panel uses. Layout matches the node's /api/oled serializer.
+function drawOled(b64, w, h) {
+  const cv = $('oledCanvas');
+  if (!cv || !b64) return;
+  const ctx = cv.getContext('2d');
+  const bin = atob(b64);
+  const img = ctx.createImageData(w, h);
+  const bpr = w >> 3;
+  for (let y = 0; y < h; y++) {
+    for (let c = 0; c < bpr; c++) {
+      const byte = bin.charCodeAt(y * bpr + c);
+      for (let i = 0; i < 8; i++) {
+        const x = c * 8 + i, on = (byte >> (7 - i)) & 1, o = (y * w + x) * 4;
+        img.data[o]     = on ? 110 : 8;
+        img.data[o + 1] = on ? 200 : 12;
+        img.data[o + 2] = on ? 255 : 20;
+        img.data[o + 3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 function wireLocateButton() {
   const btn = $('locateBtn');
   if (!btn) return;
@@ -1722,14 +2166,14 @@ function wireLocateButton() {
     btn.textContent = 'Flashing…';
     try {
       await api('POST', '/api/nodes/locate?ip=' + encodeURIComponent(ip));
-      toast('Watch the node — its activity LED should flicker for ~1.5 s', 'ok');
+      toast('All LEDs flashing orange for 10 seconds', 'ok');
     } catch(err) {
       toast('Locate failed: ' + err.message, 'err');
     } finally {
       setTimeout(() => {
         btn.disabled = false;
-        btn.textContent = 'Locate (flash LED)';
-      }, 1800);
+        btn.textContent = 'Locate (flash 10s)';
+      }, 2000);
     }
   });
 }
@@ -1804,12 +2248,440 @@ function renderHardwareSection(id) {
   slot.innerHTML = html;
 }
 
+// Live telemetry from /api/status (+ /api/witness on quadETH) — sensors, thermal,
+// socket pool, ArtSync, self-heal counters, per-port merge sources, the self-test
+// witness. Best-effort: any field the node omits (older firmware) is just skipped.
+async function renderTelemetry(n) {
+  const slot = $('telemetrySection');
+  if (!slot) return;
+  let s;
+  try { s = await nodeApi('GET', n.ip, '/api/status'); }
+  catch (e) { return; }                       // older/unreachable node — skip silently
+  if (currentPage !== 'node-detail') return;
+
+  const rows = [];
+  const r1 = v => Math.round(v * 10) / 10;
+  if (s.ambient_temp_c != null)
+    rows.push(['Ambient', r1(s.ambient_temp_c) + ' °C'
+      + (s.ambient_rh != null ? ' · ' + Math.round(s.ambient_rh) + '% RH' : '')
+      + (s.ambient_src ? ' (' + esc(s.ambient_src) + ')' : '')]);
+  if (s.chip_temp_c != null)         rows.push(['Chip temp', r1(s.chip_temp_c) + ' °C']);
+  if (s.art_sync != null)            rows.push(['ArtSync', s.art_sync ? 'active' : 'off']);
+  if (s.max14830_recoveries != null) rows.push(['DMX-chip self-heals', String(s.max14830_recoveries)]);
+  if (s.sockets) {
+    const so = s.sockets;
+    rows.push(['Sockets', so.free + ' / ' + so.total + ' free'
+      + (so.reaped ? ' · ' + so.reaped + ' reaped' : '')]);
+  }
+  const merges = (s.ports || [])
+    .filter(p => Array.isArray(p.merge_sources) && p.merge_sources.length)
+    .map(p => esc(p.name) + ': ' + p.merge_sources.map(m => esc(m.ip || m)).join(' + '));
+  if (merges.length) rows.push(['Merge sources', merges.join('<br>')]);
+
+  if (isQuadNode(n)) {
+    try {
+      const w = await nodeApi('GET', n.ip, '/api/witness');
+      if (currentPage !== 'node-detail') return;
+      if (w && w.present) {
+        let v = 'v' + (w.fw_version || 0);
+        v += w.mux_present ? ' · mux' : ' · no mux';
+        if (w.monitor && w.monitor.signal) v += ' · ' + w.monitor.fps + ' fps';
+        rows.push(['Self-test witness', v]);
+      } else if (w) {
+        rows.push(['Self-test witness', 'not fitted']);
+      }
+    } catch (_) { /* witness endpoint absent on older firmware — skip */ }
+  }
+  if (currentPage !== 'node-detail') return;
+
+  slot.innerHTML = rows.length ? `
+    <div class="subsection">
+      <div class="section-section-title">Telemetry</div>
+      <div class="status-grid">
+        ${rows.map(([k, v]) => `<div class="sk">${esc(k)}</div><div class="sv">${v}</div>`).join('')}
+      </div>
+    </div>` : '';
+}
+
+// ── RDM (quadETH-only) ───────────────────────────────────────────────────────
+// A fleet-scale RDM controller: discover fixtures on a node's port, then set DMX
+// address / identify / read DEVICE_INFO / raw GET-SET — all via the node's
+// /api/rdm/* (cross-origin, queued by nodeApi). Mirrors the quadETH's own panel.
+//   discover:  POST /api/rdm/discover?port=N  -> poll /api/status ports[N].rdm_*
+//   get/set:   GET|POST /api/rdm/{get,set}?port=N&uid=AABB:CCDDEEFF&pid=0x..&data=..
+let rdmPort = 0, rdmPollTimer = null, rdmBusy = false;
+function stopRdmPoll() { if (rdmPollTimer) { clearInterval(rdmPollTimer); rdmPollTimer = null; } }
+function rdmStat(t) { const e = $('rdmStat'); if (e) e.textContent = t; }
+const uidId = uid => uid.replace(/[^0-9a-fA-F]/g, '');
+
+function renderRdmTab(n) {
+  const pane = $('rdmPane');
+  if (!pane) return;
+  const letters = portLettersFor(n);
+  pane.innerHTML = `
+    <div class="subsection">
+      <div class="section-section-title">RDM Discovery</div>
+      <div class="status-grid" style="grid-template-columns:90px 1fr">
+        <div class="sk">Port</div>
+        <div class="sv">
+          <select id="rdmPortSel">${letters.map((L, i) => `<option value="${i}">Port ${L}</option>`).join('')}</select>
+          <button class="btn btn-primary btn-small" id="rdmDiscBtn">Discover</button>
+          <span class="hint" id="rdmStat"></span>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:6px">
+        Discovery briefly pauses DMX on the node. The port should be in
+        <strong>DMX Output + RDM</strong> mode for fixtures to answer.</p>
+      <div id="rdmTod" style="margin-top:12px"></div>
+    </div>`;
+  const sel = $('rdmPortSel');
+  sel.value = String(Math.min(rdmPort, letters.length - 1));
+  sel.onchange = e => { rdmPort = parseInt(e.target.value, 10); };
+  $('rdmDiscBtn').onclick = () => rdmDiscover(n);
+}
+
+async function rdmDiscover(n) {
+  if (rdmBusy) return;
+  rdmBusy = true;
+  const btn = $('rdmDiscBtn'); if (btn) btn.disabled = true;
+  rdmStat('discovering…');
+  try { await nodeApi('POST', n.ip, '/api/rdm/discover?port=' + rdmPort); }
+  catch (e) { rdmBusy = false; if (btn) btn.disabled = false; rdmStat('error'); toast('Discover failed: ' + e.message, 'err'); return; }
+  let polls = 0;
+  stopRdmPoll();
+  rdmPollTimer = setInterval(async () => {
+    if (currentPage !== 'node-detail') { stopRdmPoll(); return; }
+    polls++;
+    let s;
+    try { s = await nodeApi('GET', n.ip, '/api/status'); } catch (_) { return; }
+    const p = (s.ports || [])[rdmPort] || {};
+    rdmStat((p.rdm_phase || '?') + ' · ' + (p.rdm_responses || 0) + ' resp');
+    rdmRenderTod(n, p.rdm_tod || []);
+    if (p.rdm_phase === 'done' || p.rdm_phase === 'idle' || polls > 25) {
+      stopRdmPoll(); rdmBusy = false; if (btn) btn.disabled = false;
+    }
+  }, 1000);
+}
+
+function rdmRenderTod(n, tod) {
+  const box = $('rdmTod'); if (!box) return;
+  // Only repaint when the UID set changes — avoid clobbering inputs mid-edit.
+  const sig = tod.join(',');
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  if (!tod.length) {
+    box.innerHTML = '<p style="font-size:13px;color:var(--text-dim)">No fixtures found yet. Connect RDM fixtures and Discover.</p>';
+    return;
+  }
+  box.innerHTML = tod.map(uid => {
+    const id = uidId(uid);
+    return `
+      <div class="config-section">
+        <div class="port-heading">
+          <span class="port-label" style="font-family:var(--mono)">${esc(uid)}</span>
+          <button class="btn btn-secondary btn-small" onclick="rdmIdentify('${esc(n.ip)}','${esc(uid)}')">Identify</button>
+        </div>
+        <div class="status-grid">
+          <div class="sk">DMX Address</div>
+          <div class="sv">
+            <input type="number" id="rdmAddr_${id}" min="1" max="512" style="width:90px">
+            <button class="btn btn-primary btn-small" onclick="rdmSetAddr('${esc(n.ip)}','${esc(uid)}','${id}')">Set</button>
+          </div>
+          <div class="sk">Device Info</div>
+          <div class="sv">
+            <button class="btn btn-secondary btn-small" onclick="rdmInfo('${esc(n.ip)}','${esc(uid)}','${id}')">Read</button>
+            <span id="rdmInfo_${id}" class="hint"></span>
+          </div>
+          <div class="sk">Raw PID</div>
+          <div class="sv">
+            <input type="text" id="rdmPid_${id}" placeholder="0x00F0" style="width:78px">
+            <input type="text" id="rdmData_${id}" placeholder="data hex" style="width:90px">
+            <button class="btn btn-secondary btn-small" onclick="rdmRaw('${esc(n.ip)}','${esc(uid)}','${id}',false)">Get</button>
+            <button class="btn btn-secondary btn-small" onclick="rdmRaw('${esc(n.ip)}','${esc(uid)}','${id}',true)">Set</button>
+            <span id="rdmRaw_${id}" class="hint"></span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+  // Prefill each fixture's current DMX address (PID 0x00F0).
+  tod.forEach(uid => {
+    const id = uidId(uid);
+    rdmGet(n.ip, uid, 0xF0).then(a => {
+      const f = $('rdmAddr_' + id);
+      if (f && a && a.data_hex) f.value = parseInt(a.data_hex, 16);
+    }).catch(() => {});
+  });
+}
+
+function rdmGet(ip, uid, pid, data) {
+  // /api/rdm/get is POST on the node (reads its args from the query string).
+  let u = '/api/rdm/get?port=' + rdmPort + '&uid=' + encodeURIComponent(uid) + '&pid=0x' + pid.toString(16);
+  if (data) u += '&data=' + data;
+  return nodeApi('POST', ip, u);
+}
+async function rdmSetAddr(ip, uid, id) {
+  const f = $('rdmAddr_' + id);
+  const addr = parseInt(f && f.value, 10);
+  if (!(addr >= 1 && addr <= 512)) { toast('Address must be 1–512', 'err'); return; }
+  const hex = ('000' + addr.toString(16)).slice(-4);
+  try {
+    await nodeApi('POST', ip, '/api/rdm/set?port=' + rdmPort + '&uid=' + encodeURIComponent(uid) + '&pid=0x00F0&data=' + hex);
+    toast('Address set to ' + addr);
+    setTimeout(() => rdmGet(ip, uid, 0xF0).then(a => { if (a && a.data_hex && f) f.value = parseInt(a.data_hex, 16); }).catch(() => {}), 700);
+  } catch (e) { toast('Set failed: ' + e.message, 'err'); }
+}
+async function rdmIdentify(ip, uid) {
+  try { await nodeApi('POST', ip, '/api/rdm/set?port=' + rdmPort + '&uid=' + encodeURIComponent(uid) + '&pid=0x1000&data=01'); toast('Identify flashing'); }
+  catch (e) { toast('Identify failed: ' + e.message, 'err'); }
+}
+// Decode the useful bits of a DEVICE_INFO (PID 0x0060) response.
+function rdmDecodeDeviceInfo(h) {
+  if (!h || h.length < 38) return null;
+  const b = i => parseInt(h.substr(i * 2, 2), 16);
+  const u16 = i => (b(i) << 8) | b(i + 1);
+  return { footprint: u16(10), personality: b(12), personalityCount: b(13), startAddr: u16(14) };
+}
+async function rdmInfo(ip, uid, id) {
+  const e = $('rdmInfo_' + id); if (e) e.textContent = 'reading…';
+  try {
+    const r = await rdmGet(ip, uid, 0x60);
+    const d = r && rdmDecodeDeviceInfo(r.data_hex);
+    if (e) e.textContent = d
+      ? `${d.footprint} ch · addr ${d.startAddr} · personality ${d.personality}/${d.personalityCount}`
+      : (r && r.data_hex ? r.data_hex : 'no response');
+  } catch (err) { if (e) e.textContent = 'error'; }
+}
+async function rdmRaw(ip, uid, id, isSet) {
+  const pid = (($('rdmPid_' + id) || {}).value || '').trim();
+  const data = (($('rdmData_' + id) || {}).value || '').trim();
+  if (!pid) { toast('Enter a PID, e.g. 0x00F0', 'err'); return; }
+  const out = $('rdmRaw_' + id); if (out) out.textContent = '…';
+  let u = '/api/rdm/' + (isSet ? 'set' : 'get') + '?port=' + rdmPort + '&uid=' + encodeURIComponent(uid) + '&pid=' + pid + (data ? '&data=' + data : '');
+  try {
+    const r = await nodeApi('POST', ip, u);   // both rdm/get and rdm/set are POST
+    if (out) out.textContent = isSet ? 'set ok' : (r && r.data_hex ? r.data_hex : JSON.stringify(r));
+  } catch (e) { if (out) out.textContent = 'error: ' + e.message; }
+}
+
+// ── DMX Test generator ───────────────────────────────────────────────────────
+// A mini lighting desk. masterETH broadcasts ArtDmx on the chosen universe via
+// POST /api/artdmx; a node listening there outputs it as continuous DMX. State
+// = a master fill + per-channel overrides, so the whole universe stays coherent
+// (moving one fader doesn't blank the rest).
+const TEST_FADERS = 24;
+let testFill = 0, testState = {}, testSendTimer = null;
+function testEffective(c) { return c in testState ? testState[c] : testFill; }
+function renderTest() {
+  let faders = '';
+  for (let c = 1; c <= TEST_FADERS; c++) {
+    faders += `
+      <div style="display:flex;flex-direction:column;align-items:center;width:40px">
+        <input type="range" min="0" max="255" value="${testEffective(c)}" id="tF${c}"
+               oninput="testFader(${c},this.value)"
+               style="writing-mode:vertical-lr;direction:rtl;width:24px;height:96px;accent-color:var(--accent)">
+        <span id="tFv${c}" style="font-size:11px;font-family:var(--mono)">${testEffective(c)}</span>
+        <label style="font-size:11px;color:var(--text-dim)">${c}</label>
+      </div>`;
+  }
+  content.innerHTML = `
+    <div class="section-header"><div class="section-title">DMX Test</div></div>
+    <div class="subsection">
+      <div class="section-section-title">Target universe</div>
+      <div class="status-grid" style="grid-template-columns:90px 1fr">
+        <div class="sk">Net</div>      <div class="sv"><input type="number" id="tNet" value="0" min="0" max="127" style="width:80px"></div>
+        <div class="sk">Subnet</div>   <div class="sv"><input type="number" id="tSub" value="0" min="0" max="15" style="width:80px"></div>
+        <div class="sk">Universe</div> <div class="sv"><input type="number" id="tUni" value="0" min="0" max="15" style="width:80px"></div>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:6px">
+        masterETH broadcasts ArtDmx on this universe — whichever node is listening there
+        outputs the frame as continuous DMX. (15-bit Port-Address = Net·Subnet·Universe.)</p>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-primary btn-small" onclick="testAllOn()">All On (255)</button>
+        <button class="btn btn-secondary btn-small" onclick="testBlackout()">Blackout</button>
+        <span class="save-status" id="tStat"></span>
+      </div>
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">Channel faders (1–${TEST_FADERS})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${faders}</div>
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">Set any channel</div>
+      <div class="sv">
+        Ch <input type="number" id="tCh" min="1" max="512" value="1" style="width:70px">
+        Val <input type="number" id="tVal" min="0" max="255" value="255" style="width:70px">
+        <button class="btn btn-secondary btn-small" onclick="testSetOne()">Send</button>
+      </div>
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">Master Cue — recall a scene across all quadETH nodes</div>
+      <div class="btn-row" style="flex-wrap:wrap">
+        ${[0, 1, 2, 3, 4, 5, 6, 7].map(s => `<button class="btn btn-secondary btn-small" onclick="masterCue(${s})">Scene ${s + 1}</button>`).join('')}
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:6px">
+        Fires <code>/api/scenes/recall</code> on every online quadETH simultaneously — synchronized fleet playback.
+        Save the scenes per node on its <strong>Scenes</strong> tab first.</p>
+    </div>`;
+}
+function testFrame() {
+  const net = parseInt(($('tNet') || {}).value, 10) || 0;
+  const sub = parseInt(($('tSub') || {}).value, 10) || 0;
+  const uni = parseInt(($('tUni') || {}).value, 10) || 0;
+  const set = Object.keys(testState).map(c => c + ':' + testState[c]).join(',');
+  let u = '/api/artdmx?net=' + net + '&subnet=' + sub + '&universe=' + uni + '&len=512&fill=' + testFill + (set ? '&set=' + set : '');
+  api('POST', u)
+    .then(() => { const e = $('tStat'); if (e) { e.textContent = 'sent'; e.classList.add('show'); } })
+    .catch(() => { const e = $('tStat'); if (e) e.textContent = 'send failed'; });
+}
+function testFrameDebounced() { if (testSendTimer) clearTimeout(testSendTimer); testSendTimer = setTimeout(testFrame, 40); }
+function testSyncFaders() {
+  for (let c = 1; c <= TEST_FADERS; c++) {
+    const f = $('tF' + c), s = $('tFv' + c), v = testEffective(c);
+    if (f) f.value = v; if (s) s.textContent = v;
+  }
+}
+function testFader(c, v) { testState[c] = parseInt(v, 10); const s = $('tFv' + c); if (s) s.textContent = v; testFrameDebounced(); }
+function testAllOn() { testFill = 255; testState = {}; testSyncFaders(); testFrame(); }
+function testBlackout() { testFill = 0; testState = {}; testSyncFaders(); testFrame(); }
+function testSetOne() {
+  const c = parseInt(($('tCh') || {}).value, 10), v = parseInt(($('tVal') || {}).value, 10);
+  if (!(c >= 1 && c <= 512)) { toast('Channel 1–512', 'err'); return; }
+  testState[c] = Math.max(0, Math.min(255, v || 0));
+  if (c <= TEST_FADERS) { const f = $('tF' + c); if (f) f.value = testState[c]; const s = $('tFv' + c); if (s) s.textContent = testState[c]; }
+  testFrame();
+}
+
+// ── Scenes (quadETH-only) ────────────────────────────────────────────────────
+// FRAM-backed scene snapshots on the node. Save captures the node's current live
+// DMX into a slot; Recall outputs it; Clear wipes it. All via /api/scenes/* JSON.
+async function renderScenesTab(n) {
+  const pane = $('scenesPane');
+  if (!pane) return;
+  let data;
+  try { data = await nodeApi('GET', n.ip, '/api/scenes'); }
+  catch (e) { pane.innerHTML = `<p style="font-size:13px;color:var(--err)">Could not read scenes (${esc(e.message)}).</p>`; return; }
+  if (currentPage !== 'node-detail') return;
+  const scenes = (data && data.scenes) || [];
+  pane.innerHTML = `
+    <div class="subsection">
+      <div class="section-section-title">Scenes</div>
+      <p style="font-size:12px;color:var(--text-dim)">
+        <strong>Save</strong> captures this node's current live DMX (all ports) into a slot;
+        <strong>Recall</strong> outputs it; <strong>Clear</strong> wipes it. Stored in FRAM, survives reboots.</p>
+      <div style="margin-top:10px">${scenes.map(s => {
+        const used = s.used;
+        return `
+          <div class="config-section">
+            <div class="port-heading">
+              <span class="port-label">Scene ${s.slot + 1}</span>
+              <span class="port-mode" style="background:${used ? 'var(--ok-bg,#1a3)' : 'transparent'}">${used ? 'stored' : 'empty'}</span>
+            </div>
+            <div class="status-grid" style="grid-template-columns:90px 1fr">
+              <div class="sk">Name</div>
+              <div class="sv"><input type="text" id="scn_${s.slot}" maxlength="20" value="${esc(s.name || '')}" placeholder="Scene ${s.slot + 1}" style="width:160px"></div>
+              <div class="sk">Actions</div>
+              <div class="sv">
+                <button class="btn btn-primary btn-small" onclick="sceneSave('${esc(n.ip)}',${s.slot})">Save current</button>
+                <button class="btn btn-secondary btn-small" onclick="sceneRecall('${esc(n.ip)}',${s.slot})" ${used ? '' : 'disabled'}>Recall</button>
+                <button class="btn btn-secondary btn-small" onclick="sceneClear('${esc(n.ip)}',${s.slot})" ${used ? '' : 'disabled'}>Clear</button>
+              </div>
+            </div>
+          </div>`;
+      }).join('')}</div>
+    </div>`;
+}
+async function sceneSave(ip, slot) {
+  const name = (($('scn_' + slot) || {}).value || '').trim();
+  try { await nodeApi('POST', ip, '/api/scenes/save', { slot, name }); toast('Scene ' + (slot + 1) + ' saved'); if (detailNode) renderScenesTab(detailNode); }
+  catch (e) { toast('Save failed: ' + e.message, 'err'); }
+}
+async function sceneRecall(ip, slot) {
+  try { await nodeApi('POST', ip, '/api/scenes/recall', { slot }); toast('Scene ' + (slot + 1) + ' recalled'); }
+  catch (e) { toast('Recall failed: ' + e.message, 'err'); }
+}
+async function sceneClear(ip, slot) {
+  if (!confirm('Clear scene ' + (slot + 1) + '?')) return;
+  try { await nodeApi('POST', ip, '/api/scenes/clear', { slot }); toast('Scene ' + (slot + 1) + ' cleared'); if (detailNode) renderScenesTab(detailNode); }
+  catch (e) { toast('Clear failed: ' + e.message, 'err'); }
+}
+
+// Master cue — recall the same scene slot across every online quadETH at once.
+async function masterCue(slot) {
+  const targets = cachedNodes.filter(n => isQuadNode(n) && n.online && n.compat === 'compatible');
+  if (!targets.length) { toast('No online quadETH nodes', 'err'); return; }
+  let ok = 0;
+  await Promise.all(targets.map(n =>
+    nodeApi('POST', n.ip, '/api/scenes/recall', { slot }).then(() => ok++).catch(() => {})));
+  toast('Master cue ' + (slot + 1) + ' → ' + ok + '/' + targets.length + ' node(s)');
+}
+
+// ── Art-Net monitor ──────────────────────────────────────────────────────────
+// Live universe activity, tallied by masterETH from broadcast ArtDmx on UDP 6454
+// (no extra socket). fps is computed browser-side by diffing the packet count
+// between polls. A universe driven by >1 source IP is flagged as a conflict.
+// (sACN is multicast on 5568 and would need a dedicated socket + IGMP joins per
+// universe — deferred; this watches Art-Net broadcast traffic.)
+let monPrev = {};
+async function renderMonitor() {
+  let d;
+  try { d = await api('GET', '/api/artnet-monitor'); } catch (e) { d = { sources: [] }; }
+  if (currentPage !== 'monitor') return;
+  const now = Date.now();
+  const rows = (d.sources || []).map(s => {
+    const key = s.net + '.' + s.subnet + '.' + s.universe + '@' + s.ip;
+    const prev = monPrev[key];
+    let fps = 0;
+    if (prev && now > prev.t) fps = Math.max(0, Math.round((s.count - prev.count) * 1000 / (now - prev.t)));
+    monPrev[key] = { count: s.count, t: now };
+    return Object.assign({ fps, key }, s);
+  });
+  // Conflict = same Net.Subnet.Universe driven by more than one source IP.
+  const byUni = {};
+  rows.forEach(r => { const u = r.net + '.' + r.subnet + '.' + r.universe; (byUni[u] = byUni[u] || new Set()).add(r.ip); });
+  rows.sort((a, b) => (a.net - b.net) || (a.subnet - b.subnet) || (a.universe - b.universe) || a.ip.localeCompare(b.ip));
+  const conflicts = Object.values(byUni).filter(set => set.size > 1).length;
+
+  content.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Art-Net Monitor</div>
+      <div class="heartbeat" id="hb"><span class="hb-dot"></span>live</div>
+    </div>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px">
+      Live broadcast ArtDmx seen on the network, by universe and source. fps is measured.
+      A universe driven by more than one source is flagged as a conflict
+      ${conflicts ? `<span style="color:var(--err)">— ${conflicts} found</span>` : ''}.
+      ${rows.length ? '' : ' Nothing on the wire yet — send from the DMX Test page or a console.'}</p>
+    ${rows.length ? `
+    <div class="status-grid" style="grid-template-columns:60px 60px 80px 1fr 70px 60px 70px">
+      <div class="sk" style="font-weight:600">Net</div>
+      <div class="sk" style="font-weight:600">Sub</div>
+      <div class="sk" style="font-weight:600">Universe</div>
+      <div class="sk" style="font-weight:600">Source</div>
+      <div class="sk" style="font-weight:600">fps</div>
+      <div class="sk" style="font-weight:600">Ch</div>
+      <div class="sk" style="font-weight:600">Age</div>
+      ${rows.map(r => {
+        const u = r.net + '.' + r.subnet + '.' + r.universe;
+        const cls = byUni[u].size > 1 ? 'err' : '';
+        return `
+          <div class="sv ${cls}">${r.net}</div>
+          <div class="sv ${cls}">${r.subnet}</div>
+          <div class="sv ${cls}">${r.universe}</div>
+          <div class="sv ${cls}" style="font-family:var(--mono)">${esc(r.ip)}</div>
+          <div class="sv ${cls}">${r.fps}</div>
+          <div class="sv ${cls}">${r.len}</div>
+          <div class="sv ${cls}">${r.age < 1500 ? 'now' : Math.round(r.age / 1000) + 's'}</div>`;
+      }).join('')}
+    </div>` : ''}`;
+  const hb = $('hb'); if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
+}
+
 // ── Universes page ───────────────────────────────────────────────────────────
 //
 // Aggregates (net, subnet, universe) tuples from every compatible node's
 // port config into a single fleet-wide table, with conflicts highlighted.
-// Pure SPA — no firmware involvement beyond the existing /api/ports/[AB]
-// endpoints on each node.
+// Pure SPA — no firmware involvement beyond the per-node /api/ports/*
+// endpoints (A/B on dualETH, A–D on quadETH).
 
 async function renderUniverses() {
   content.innerHTML = '<div class="loading">Fetching fleet port configs…</div>';
@@ -1823,13 +2695,15 @@ async function renderUniverses() {
   // serialises within a node). Failures are tolerated — one offline node
   // doesn't break the whole table.
   const fetched = await Promise.all(nodes.map(async n => {
+    const ports = portLettersFor(n);  // A/B dualETH, A–D quadETH
     try {
-      const [a, b] = await Promise.all([
-        nodeApi('GET', n.ip, '/api/ports/A').catch(() => null),
-        nodeApi('GET', n.ip, '/api/ports/B').catch(() => null),
-      ]);
-      return { node: n, A: a, B: b };
-    } catch (e) { return { node: n, A: null, B: null }; }
+      const cfgs = await Promise.all(
+        ports.map(p => nodeApi('GET', n.ip, '/api/ports/' + p).catch(() => null))
+      );
+      const out = { node: n, ports: {} };
+      ports.forEach((p, i) => { out.ports[p] = cfgs[i]; });
+      return out;
+    } catch (e) { return { node: n, ports: {} }; }
   }));
 
   if (currentPage !== 'universes') return;
@@ -1840,10 +2714,10 @@ async function renderUniverses() {
   // the universe[] array (or numPixels-derived count) so every consumed
   // universe is visible.
   const map = new Map();
-  for (const { node, A, B } of fetched) {
-    for (const [port, cfg] of [['A', A], ['B', B]]) {
+  for (const { node, ports } of fetched) {
+    for (const [port, cfg] of Object.entries(ports)) {
       if (!cfg) continue;
-      const universes = computeConsumedUniverses(cfg);
+      const universes = computeConsumedUniverses(cfg, node);
       for (const u of universes) {
         const key = `${cfg.net || 0}.${cfg.subnet || 0}.${u}`;
         if (!map.has(key)) map.set(key, { net: cfg.net || 0, subnet: cfg.subnet || 0, universe: u, refs: [] });
@@ -1881,7 +2755,7 @@ async function renderUniverses() {
             const refs = r.refs.map(x => {
               const tag = getTag(x.node.mac);
               const label = tag || x.node.nodeName || x.node.ip;
-              const mode  = modeLabel(x.mode);
+              const mode  = modeLabel(x.mode, x.node);
               return `<a href="#node/${esc(x.node.ip)}" style="color:var(--accent)">${esc(label)}:${esc(x.port)}</a> <span class="dim">${esc(mode)}</span>`;
             }).join(' <span class="dim">·</span> ');
             return `
@@ -1896,20 +2770,27 @@ async function renderUniverses() {
   $('universesRefresh').addEventListener('click', () => renderUniverses());
 }
 
-// Compute the set of universes a port actually consumes. dualETH's port
-// config carries a universe[] array sized for the port's mode — for DMX
-// output that's a single-entry array, for WS2812 chains it's one entry
-// per 170-pixel chunk. We trust whatever the node says is in `universe[]`
-// and only fall back to the single-universe scalar if the array is
-// missing entirely.
-function computeConsumedUniverses(cfg) {
-  if (Array.isArray(cfg.universe) && cfg.universe.length > 0) {
-    // For non-WS2812 modes the array may still be 4 entries long with
-    // only [0] meaningful; constrain by mode.
-    if (cfg.mode === PORT_MODE_WS2812) return cfg.universe.slice();
-    return [cfg.universe[0]];
+// Compute the set of universes a port actually consumes. The node's
+// universe[] array is always 4 entries long regardless of mode/pixel count,
+// so we must constrain it ourselves or unused tail entries register as
+// phantom universes (and false conflicts).
+//   - Non-WS2812 modes consume exactly one universe (universe[0]).
+//   - WS2812 chains consume ceil(numPixels / 170) universes (a 512-channel
+//     universe carries 170 RGB pixels), minimum 1. Entries beyond that count
+//     are stale and ignored; duplicates are collapsed.
+function computeConsumedUniverses(cfg, n) {
+  const arr = (Array.isArray(cfg.universe) && cfg.universe.length)
+    ? cfg.universe : [cfg.universe || 0];
+  // quadETH has no WS2812 chains — every mode (incl. mode 3 = Scene Output)
+  // consumes exactly one universe. Only dualETH WS2812 expands to several.
+  if ((n && isQuadNode(n)) || cfg.mode !== PORT_MODE_WS2812) return [arr[0] || 0];
+
+  const count = Math.max(1, Math.ceil((cfg.numPixels || 0) / 170));
+  const uniq = [];
+  for (let i = 0; i < count && i < arr.length; i++) {
+    if (!uniq.includes(arr[i])) uniq.push(arr[i]);
   }
-  return [cfg.universe || 0];
+  return uniq.length ? uniq : [arr[0] || 0];
 }
 
 // ── Network page ─────────────────────────────────────────────────────────────
@@ -2191,8 +3072,10 @@ function renderFleetGrid() {
   const fragMax = Math.max(...entries.map(c => c.data.heapFragmentation || 0));
   const wdtSum  = entries.reduce((a, c) => a + (c.data.wdtCounter || 0), 0);
   const rstSum  = entries.reduce((a, c) => a + (c.data.resetCounter || 0), 0);
-  const totalRate = entries.reduce((a, c) =>
-    a + (c.data.portARate || 0) + (c.data.portBRate || 0), 0);
+  const totalRate = entries.reduce((a, c) => {
+    const act = portActivityFromStatus(c.data);
+    return a + Object.values(act).reduce((s, p) => s + (p.rate || 0), 0);
+  }, 0);
   const minHeapClass = minHeap > 30000 ? 'ok' : (minHeap > 15000 ? 'warn' : 'err');
   const fragClass    = fragMax < 30 ? 'ok' : (fragMax < 60 ? 'warn' : 'err');
   const wdtClass     = wdtSum === 0 ? 'ok' : 'warn';
@@ -2483,10 +3366,18 @@ async function renderFirmware() {
       <button id="fwUploadBtn" class="btn-primary" disabled>Upload Firmware</button>
     </div>
     <hr class="divider">
-    <p style="font-size:13px;color:var(--text-dim)">
-      To flash a <strong>node</strong> instead of masterETH, use the browser-based flasher at
-      <a href="https://expanseelectronics.com/updater" target="_blank" rel="noreferrer">expanseelectronics.com/updater</a>.
-    </p>`;
+    <div class="section-title" style="margin-top:8px">Fleet Firmware Update</div>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px">
+      Push firmware to managed <strong>quadETH</strong> nodes over the network — no programmer.
+      <code>.expf</code> bundles the ESP + ATmega witness in one file; <code>.bin</code> is ESP-only.
+      Nodes flash one at a time and reboot when done. Don't navigate away mid-flash.</p>
+    <div class="file-input-wrapper">
+      <input type="file" id="fleetFile" accept=".expf,.bin">
+      <div class="file-label" id="fleetLabel">Choose firmware (.expf / .bin)</div>
+    </div>
+    <div id="fleetNodes" style="margin:12px 0"></div>
+    <div class="btn-row"><button id="fleetFlashBtn" class="btn-primary" disabled>Flash selected nodes</button></div>
+    <div id="fleetMsg" style="margin-top:10px"></div>`;
 
   const fileInput = $('fwFile');
   const fileLabel = $('fwLabel');
@@ -2552,6 +3443,66 @@ async function renderFirmware() {
     xhr.open('POST', '/upload');
     xhr.send(data);
   });
+
+  // ── Fleet firmware update ──────────────────────────────────────────────
+  let fleetFileBuf = null;
+  const ffFile = $('fleetFile'), ffLabel = $('fleetLabel'), ffBtn = $('fleetFlashBtn');
+  ffFile.addEventListener('change', () => {
+    if (!ffFile.files.length) return;
+    ffLabel.textContent = ffFile.files[0].name;
+    ffLabel.classList.add('has-file');
+    ffFile.files[0].arrayBuffer().then(buf => { fleetFileBuf = buf; refreshFleetBtn(); });
+  });
+  function refreshFleetBtn() {
+    const anyChecked = !!document.querySelector('#fleetNodes input:checked');
+    ffBtn.disabled = !(fleetFileBuf && anyChecked);
+  }
+  // Build the node checkbox list (only quadETH — they take /api/update; dualETH
+  // uses a different multipart endpoint and isn't supported here yet).
+  try {
+    const nodes = ((await api('GET', '/api/nodes')).nodes || [])
+      .filter(n => /^quadETH/i.test(n.deviceType || '') && n.online && n.compat === 'compatible');
+    const box = $('fleetNodes');
+    box.innerHTML = nodes.length
+      ? nodes.map(n => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0">
+          <input type="checkbox" class="fleetChk" value="${esc(n.ip)}" checked>
+          <span>${esc(n.nodeName || n.ip)} <span class="dim" style="font-family:var(--mono)">${esc(n.ip)}</span> · ${esc(n.firmwareVersion)}</span>
+          <span class="hint" id="ffStat_${n.ip.replace(/\./g, '_')}"></span></label>`).join('')
+      : '<p style="font-size:13px;color:var(--text-dim)">No online quadETH nodes to update.</p>';
+    box.querySelectorAll('.fleetChk').forEach(c => c.addEventListener('change', refreshFleetBtn));
+  } catch (_) { $('fleetNodes').innerHTML = '<p class="dim">Could not list nodes.</p>'; }
+
+  ffBtn.addEventListener('click', async () => {
+    const ips = Array.from(document.querySelectorAll('#fleetNodes input:checked')).map(c => c.value);
+    if (!fleetFileBuf || !ips.length) return;
+    ffBtn.disabled = true;
+    for (const ip of ips) {
+      const st = $('ffStat_' + ip.replace(/\./g, '_'));
+      try {
+        const msg = await pushFirmware(ip, fleetFileBuf, p => { if (st) st.textContent = 'uploading ' + Math.round(p * 100) + '%'; });
+        if (st) st.textContent = '✓ ' + msg;
+      } catch (e) {
+        if (st) st.textContent = '✗ ' + e.message;
+      }
+    }
+    $('fleetMsg').textContent = 'Done. Nodes reboot after flashing.';
+    ffBtn.disabled = false;
+  });
+}
+
+// XHR push of a firmware blob to a node's /api/update (raw body — .expf or .bin).
+// Cross-origin is allowed (node CORS = *). Returns the node's response text.
+function pushFirmware(ip, blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', 'http://' + ip + '/api/update');
+    x.timeout = 120000;
+    x.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    x.onload = () => x.status === 200 ? resolve(x.responseText || 'ok') : reject(new Error('HTTP ' + x.status + ' ' + x.responseText));
+    x.onerror = () => reject(new Error('network error'));
+    x.ontimeout = () => reject(new Error('timeout'));
+    x.send(blob);
+  });
 }
 
 // ── Reboot ───────────────────────────────────────────────────────────────────
@@ -2587,6 +3538,11 @@ $('rebootConfirm').addEventListener('click', async () => {
 
 function stopPollTimer() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  stopOledMirror();
+}
+
+function stopOledMirror() {
+  if (oledTimer) { clearInterval(oledTimer); oledTimer = null; }
 }
 
 function setActive(page) {
@@ -2623,6 +3579,11 @@ async function loadFromHash() {
       if (currentPage === 'nodes') pollTimer = setInterval(renderNodes, 5000);
       break;
     case 'universes': await renderUniverses(); break;
+    case 'test':     renderTest(); break;
+    case 'monitor':
+      await renderMonitor();
+      if (currentPage === 'monitor') pollTimer = setInterval(renderMonitor, 1500);
+      break;
     case 'network':  await renderNetwork(); break;
     case 'system':
       await renderSystem();
@@ -2653,6 +3614,181 @@ document.querySelectorAll('#nav a[data-page]').forEach(a => {
 });
 
 window.addEventListener('hashchange', loadFromHash);
+
+// ── Onboarding wizard ────────────────────────────────────────────────────────
+
+const ONBOARD_STEPS = ['welcome','network','leds','done'];
+let   onboardIndex      = 0;
+let   onboardPendingIp  = null;  // static IP if network changed during wizard
+let   onboardChangedIp  = false; // any IP/DHCP change happened during wizard
+
+function onboardShow() {
+  onboardIndex     = 0;
+  onboardPendingIp = null;
+  onboardChangedIp = false;
+  $('onboard').classList.remove('hidden');
+  onboardRender();
+}
+
+function onboardClose() {
+  const o = $('onboard');
+  o.classList.add('leaving');
+  setTimeout(() => {
+    o.classList.add('hidden');
+    o.classList.remove('leaving');
+    o.style.opacity = '';
+  }, 420);
+}
+
+function onboardAdvance() { onboardIndex++; onboardRender(); }
+
+function onboardRender() {
+  $('onboardDots').innerHTML = ONBOARD_STEPS.map((_, i) => {
+    const c = i < onboardIndex ? 'done' : (i === onboardIndex ? 'current' : '');
+    return `<div class="onboard-dot ${c}"></div>`;
+  }).join('');
+
+  switch (ONBOARD_STEPS[onboardIndex]) {
+    case 'welcome': return onboardRenderWelcome();
+    case 'network': return onboardRenderNetwork();
+    case 'leds':    return onboardRenderLeds();
+    case 'done':    return onboardRenderDone();
+  }
+}
+
+function onboardRenderWelcome() {
+  $('onboardBody').innerHTML = `
+    <div class="onboard-step">
+      <div class="onboard-headline">Welcome to <span>masterETH</span></div>
+      <div class="onboard-body-text">masterETH discovers all expanseElectronics dualETH nodes on your lighting LAN and gives you a single dashboard to configure them. Let's set up network and take a quick tour. Takes about 30 seconds.</div>
+      <div class="onboard-actions">
+        <button id="onboardSkipAll" class="btn-secondary">Skip setup</button>
+        <button id="onboardStart" class="btn-primary">Get started</button>
+      </div>
+    </div>`;
+  $('onboardSkipAll').onclick = () => onboardFinalize();
+  $('onboardStart').onclick   = onboardAdvance;
+}
+
+async function onboardRenderNetwork() {
+  $('onboardBody').innerHTML = `<div class="onboard-step"><div class="loading">Loading…</div></div>`;
+  let d;
+  try { d = await api('GET', '/api/network'); }
+  catch(e) { $('onboardBody').innerHTML = `<div class="onboard-step"><div class="error-msg">Could not reach device.</div></div>`; return; }
+
+  $('onboardBody').innerHTML = `
+    <div class="onboard-step">
+      <div class="onboard-headline">Network <span>setup</span></div>
+      <div class="onboard-body-text">Pick how the masterETH gets its IP address. DHCP works for most installs; a static IP is wise if you bookmark this page by address. You can also set a friendly node name.</div>
+      <form id="onboardNetForm">
+        <div class="form-group"><label>DHCP</label><div><input type="checkbox" name="dhcpEnable" ${d.dhcpEnable?'checked':''}></div></div>
+        <div class="form-group"><label>IP Address</label><div class="ip-row">${ipInputs('ip', d.ip)}</div></div>
+        <div class="form-group"><label>Subnet</label><div class="ip-row">${ipInputs('subnet', d.subnet)}</div></div>
+        <div class="form-group"><label>Gateway</label><div class="ip-row">${ipInputs('gateway', d.gateway)}</div></div>
+        <hr class="divider">
+        <div class="form-group"><label>Node Name</label><div><input type="text" name="nodeName" value="${esc(d.nodeName)}" maxlength="17"></div></div>
+      </form>
+      <div class="onboard-hint">Saving here doesn't reboot immediately — changes apply on the final restart at the end of setup.</div>
+      <div class="onboard-actions">
+        <button class="btn-secondary" id="onboardSkip">Skip</button>
+        <button class="btn-primary" id="onboardSave">Save &amp; continue</button>
+      </div>
+    </div>`;
+  $('onboardSkip').onclick = onboardAdvance;
+  $('onboardSave').onclick = async () => {
+    const f = $('onboardNetForm');
+    const wasDhcp = d.dhcpEnable;
+    const nowDhcp = f.dhcpEnable.checked;
+    const ip      = readIpInputs(f, 'ip');
+    const body = {
+      dhcpEnable: nowDhcp,
+      ip,
+      subnet:  readIpInputs(f, 'subnet'),
+      gateway: readIpInputs(f, 'gateway'),
+      nodeName: f.nodeName.value,
+      defer: true,
+    };
+    try {
+      const r = await api('POST', '/api/network', body);
+      if (r.defer) {
+        onboardChangedIp = true;
+        onboardPendingIp = nowDhcp ? null : ip.join('.');
+      }
+      onboardAdvance();
+    } catch(err) { toast('Save failed: ' + err.message, 'err'); }
+  };
+}
+
+function onboardRenderLeds() {
+  $('onboardBody').innerHTML = `
+    <div class="onboard-step">
+      <div class="onboard-headline">Status <span>LED</span></div>
+      <div class="onboard-body-text">One status LED on the front of the masterETH shows the current state of the fleet at a glance. Same colours appear on the System page.</div>
+
+      <div class="led-legend">
+        <div class="led-legend-row"><div class="led-dot" style="background:#64ffff"></div><div class="led-legend-text"><strong>Dim cyan</strong> — boot (until Ethernet initializes)</div></div>
+        <div class="led-legend-row"><div class="led-dot" style="background:#ff0000"></div><div class="led-legend-text"><strong>Solid red</strong> — no Ethernet link detected</div></div>
+        <div class="led-legend-row"><div class="led-dot" style="background:#ff50b4"></div><div class="led-legend-text"><strong>Pulsing pink</strong> — searching for nodes (link up, no nodes yet)</div></div>
+        <div class="led-legend-row"><div class="led-dot" style="background:#00ff00"></div><div class="led-legend-text"><strong>Pulsing green</strong> — healthy (at least one node online)</div></div>
+        <div class="led-legend-row"><div class="led-dot" style="background:#ff6000"></div><div class="led-legend-text"><strong>Pulsing orange</strong> — all nodes offline (registry has nodes, but none respond)</div></div>
+        <div class="led-legend-row"><div class="led-dot" style="background:#ffb400"></div><div class="led-legend-text"><strong>Pulsing amber</strong> — fallback DHCP server mode (masterETH is the LAN)</div></div>
+      </div>
+
+      <div class="onboard-hint">The masterETH will start in "searching" mode and turn green once it discovers nodes.</div>
+      <div class="onboard-actions">
+        <button class="btn-secondary" id="onboardBack">Back</button>
+        <button class="btn-primary" id="onboardContinue">Got it</button>
+      </div>
+    </div>`;
+  $('onboardBack').onclick     = () => { onboardIndex--; onboardRender(); };
+  $('onboardContinue').onclick = onboardAdvance;
+}
+
+function onboardRenderDone() {
+  $('onboardBody').innerHTML = `
+    <div class="onboard-step">
+      <div class="onboard-headline">You're <span>ready</span></div>
+      <div class="onboard-body-text">Setup complete. If any change requires a restart, the masterETH will reboot now and the page will reconnect automatically.</div>
+      <div class="onboard-actions">
+        <span class="spacer"></span>
+        <button class="btn-primary" id="onboardFinish">Finish</button>
+      </div>
+    </div>`;
+  $('onboardFinish').onclick = () => onboardFinalize();
+}
+
+async function onboardFinalize() {
+  try {
+    const r = await api('POST', '/api/onboarding-done');
+    if (r.reboot) {
+      if (onboardPendingIp) {
+        $('onboardBody').innerHTML = `
+          <div class="onboard-step">
+            <div class="onboard-headline">Rebooting…</div>
+            <div class="onboard-body-text">Connecting at the new address: <strong>${esc(onboardPendingIp)}</strong></div>
+          </div>`;
+        setTimeout(() => { location.href = 'http://' + onboardPendingIp + '/'; }, 8000);
+      } else {
+        $('onboardBody').innerHTML = `
+          <div class="onboard-step">
+            <div class="onboard-headline">Rebooting…</div>
+            <div class="onboard-body-text">${onboardChangedIp
+              ? 'The masterETH is restarting on a new DHCP address. Find it on your network and reload this page.'
+              : 'Page will reload in 8 seconds.'}</div>
+          </div>`;
+        setTimeout(() => location.reload(), 8000);
+      }
+      return;
+    }
+  } catch(err) {
+    toast('Could not finish setup: ' + err.message, 'err');
+    return;
+  }
+  onboardClose();
+  location.hash = '#nodes';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Global keyboard shortcuts. Pressed-while-typing-in-an-input is
 // excluded so search and form fields keep working normally.
@@ -2716,10 +3852,17 @@ onStatusUpdate(() => {
 });
 startStatusPoller();
 
-// Load server-side tags before the first render so labels are correct on
-// the initial Nodes list paint. If the fetch fails, loadServerTags falls
-// back to the legacy localStorage cache.
-loadServerTags().finally(loadFromHash);
+// Boot sequence: check if this is first boot (onboarding not yet done), show
+// wizard if so. Then load server-side tags before the first render so labels
+// are correct on the initial Nodes list paint.
+(async () => {
+  try {
+    const d = await api('GET', '/api/identify');
+    if (d.firstBoot) onboardShow();
+  } catch(_) { /* identify fails: just load the page and let it surface the error */ }
+  await loadServerTags();
+  loadFromHash();
+})();
   </script>
 </body>
 </html>

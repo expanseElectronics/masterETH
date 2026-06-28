@@ -28,6 +28,7 @@ namespace {
 constexpr uint16_t ARTNET_PORT      = 6454;
 constexpr uint16_t ARTPOLL_OPCODE   = 0x2000;
 constexpr uint16_t ARTPOLLREPLY_OPCODE = 0x2100;
+constexpr uint16_t ARTDMX_OPCODE    = 0x5000;
 constexpr uint8_t  ARTNET_PROTVER_HI = 0x00;
 constexpr uint8_t  ARTNET_PROTVER_LO = 0x0E;  // 14 — current Art-Net
 
@@ -50,17 +51,8 @@ EthernetUDP g_udp;
 uint32_t    g_nextPollMs = 0;
 bool        g_immediatePollRequested = false;
 
-// Locate-pulse state. Active when g_locateUntilMs is in the future. Each
-// tick that comes due fires one unicast ArtPoll at g_locateIp; the target
-// node's activity LED flickers per packet received, making it physically
-// identifiable on a rack. ArtPoll is the safe choice — unlike ArtDmx, it
-// can't ever drive a real lighting output even if the target's port map
-// includes universe 0.
-constexpr uint32_t LOCATE_DURATION_MS = 1500;
-constexpr uint32_t LOCATE_INTERVAL_MS = 80;     // ~12 packets/s = visible flicker
-IPAddress g_locateIp((uint32_t)0);
-uint32_t  g_locateUntilMs = 0;
-uint32_t  g_locateNextMs  = 0;
+// Locate is now a simple HTTP POST to /api/locate on the target node.
+// No timer state needed — the node handles the LED blink pattern.
 
 // ArtPoll packet (14 bytes total). Built once at startup; the IP header
 // stack handles broadcast routing.
@@ -95,16 +87,6 @@ void sendArtPollUnicast(IPAddress ip) {
     g_udp.write(kArtPollPacket, sizeof(kArtPollPacket));
     g_udp.endPacket();
   }
-}
-
-void servicelocatePulse(uint32_t now) {
-  if (g_locateUntilMs == 0 || now >= g_locateUntilMs) {
-    g_locateUntilMs = 0;
-    return;
-  }
-  if (now < g_locateNextMs) return;
-  sendArtPollUnicast(g_locateIp);
-  g_locateNextMs = now + LOCATE_INTERVAL_MS;
 }
 
 // Parse one ArtPollReply packet and update the registry. Reply layout
@@ -146,6 +128,41 @@ void parseArtPollReply(const uint8_t* buf, size_t len, IPAddress sourceIp) {
 // a single 256-byte buffer (ArtPollReply is 240 bytes; oversize replies
 // from non-conforming nodes are truncated, which is fine — we only read
 // the first 207 bytes anyway).
+// ---- Art-Net activity monitor -------------------------------------------
+// Tally broadcast ArtDmx already arriving on g_udp (port 6454) per (Port-Address,
+// source IP). No extra socket — we just inspect packets readUdp() already pulls.
+struct ArtMon {
+  uint16_t portAddr;   // (net<<8)|(subnet<<4)|universe
+  IPAddress ip;
+  uint32_t count;
+  uint32_t lastMs;
+  uint16_t len;
+  bool     used;
+};
+constexpr uint8_t ART_MON_MAX = 24;
+ArtMon g_artMon[ART_MON_MAX];
+
+void recordArtDmx(IPAddress src, uint8_t net, uint8_t subUni, uint16_t len) {
+  uint16_t pa = ((uint16_t)(net & 0x7F) << 8) | subUni;
+  int freeSlot = -1, oldest = 0;
+  uint32_t oldestMs = 0xFFFFFFFF;
+  for (int i = 0; i < ART_MON_MAX; i++) {
+    if (g_artMon[i].used && g_artMon[i].portAddr == pa && g_artMon[i].ip == src) {
+      g_artMon[i].count++; g_artMon[i].lastMs = millis(); g_artMon[i].len = len;
+      return;
+    }
+    if (!g_artMon[i].used) { if (freeSlot < 0) freeSlot = i; }
+    else if (g_artMon[i].lastMs < oldestMs) { oldestMs = g_artMon[i].lastMs; oldest = i; }
+  }
+  int slot = freeSlot >= 0 ? freeSlot : oldest;   // evict least-recently-seen
+  g_artMon[slot].portAddr = pa;
+  g_artMon[slot].ip       = src;
+  g_artMon[slot].count    = 1;
+  g_artMon[slot].lastMs   = millis();
+  g_artMon[slot].len      = len;
+  g_artMon[slot].used     = true;
+}
+
 void readUdp() {
   static uint8_t buf[256];
   while (true) {
@@ -153,7 +170,13 @@ void readUdp() {
     if (packetSize <= 0) return;
     IPAddress src = g_udp.remoteIP();
     int n = g_udp.read(buf, sizeof(buf));
-    if (n > 0) parseArtPollReply(buf, (size_t)n, src);
+    if (n < 18 || memcmp(buf, "Art-Net", 7) != 0) continue;
+    uint16_t op = (uint16_t)buf[8] | ((uint16_t)buf[9] << 8);   // opcode is LSB-first
+    if (op == 0x2100) {                      // ArtPollReply
+      parseArtPollReply(buf, (size_t)n, src);
+    } else if (op == 0x5000) {               // ArtDmx (OpDmx) — tally activity
+      recordArtDmx(src, buf[15], buf[14], (uint16_t)(((uint16_t)buf[16] << 8) | buf[17]));
+    }
   }
 }
 
@@ -247,6 +270,7 @@ void identifyProbe(ManagedNode* node) {
   filter["nodeName"]        = true;
   filter["deviceType"]      = true;
   filter["firmwareVersion"] = true;
+  filter["serial"]          = true;
 
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body,
@@ -259,13 +283,16 @@ void identifyProbe(ManagedNode* node) {
   const char* vendor = doc["vendor"];
   if (!vendor || strcmp(vendor, "expanseElectronics") != 0) {
     nodeRegistryNoteIncompatible(node);
+    nodeRegistrySave();  // Persist even incompatible nodes (v1.2+)
     return;
   }
 
   nodeRegistryNoteIdentified(node,
                              doc["nodeName"]        | "",
                              doc["deviceType"]      | "",
-                             doc["firmwareVersion"] | "");
+                             doc["firmwareVersion"] | "",
+                             doc["serial"]          | "");
+  nodeRegistrySave();  // Persist newly identified node (v1.2+)
 }
 
 // Walk the registry and probe at most PROBES_PER_TICK nodes whose
@@ -290,8 +317,65 @@ void drainProbeQueue() {
 
 void discoveryBegin() {
   nodeRegistryBegin();
+  nodeRegistryLoad();  // Load cached nodes from EEPROM (v1.2+)
   g_udp.begin(ARTNET_PORT);
   g_nextPollMs = millis() + 1000;  // first poll 1 s after boot
+}
+
+// Broadcast one ArtDmx (OpDmx 0x5000) frame for the DMX test generator. Public
+// (called from api.cpp) so it lives outside the anonymous namespace above, but
+// it still reaches g_udp/ARTNET_PORT via the implicit using-directive. Nodes
+// filter by 15-bit Port-Address (Net<<8 | Subnet<<4 | Universe), so one limited
+// broadcast reaches whichever node listens on that universe; one frame is enough
+// — the receiving node re-transmits continuous DMX from it.
+void sendArtDmx(uint8_t net, uint8_t subnet, uint8_t universe,
+                const uint8_t* data, uint16_t len) {
+  if (len < 2)   len = 2;
+  if (len > 512) len = 512;
+  if (len & 1)   len++;                       // Art-Net length must be even
+  const uint8_t hdr[18] = {
+    'A','r','t','-','N','e','t', 0,
+    0x00, 0x50,                               // OpDmx 0x5000 (LSB first)
+    0x00, 0x0E,                               // protocol version 14
+    0x00,                                     // sequence (0 = disabled)
+    0x00,                                     // physical
+    (uint8_t)(((subnet & 0x0F) << 4) | (universe & 0x0F)),  // SubUni
+    (uint8_t)(net & 0x7F),                    // Net
+    (uint8_t)(len >> 8), (uint8_t)(len & 0xFF) // Length Hi/Lo
+  };
+  IPAddress bcast(255, 255, 255, 255);
+  if (g_udp.beginPacket(bcast, ARTNET_PORT)) {
+    g_udp.write(hdr, sizeof(hdr));
+    g_udp.write(data, len);
+    g_udp.endPacket();
+  }
+}
+
+// Build the Art-Net monitor JSON for GET /api/artnet-monitor. Public (api.cpp),
+// so it sits outside the anonymous namespace but still reaches g_artMon. Stale
+// entries (>10 s since last frame) are dropped from the output.
+const char* artnetMonitorJson() {
+  static char buf[2600];
+  uint32_t now = millis();
+  int o = snprintf(buf, sizeof(buf), "{\"sources\":[");
+  bool first = true;
+  for (int i = 0; i < ART_MON_MAX; i++) {
+    if (!g_artMon[i].used || (now - g_artMon[i].lastMs) > 10000) continue;
+    uint16_t pa = g_artMon[i].portAddr;
+    IPAddress ip = g_artMon[i].ip;
+    o += snprintf(buf + o, sizeof(buf) - o,
+      "%s{\"net\":%u,\"subnet\":%u,\"universe\":%u,\"ip\":\"%u.%u.%u.%u\","
+      "\"count\":%lu,\"len\":%u,\"age\":%lu}",
+      first ? "" : ",",
+      (pa >> 8) & 0x7F, (pa >> 4) & 0x0F, pa & 0x0F,
+      ip[0], ip[1], ip[2], ip[3],
+      (unsigned long)g_artMon[i].count, g_artMon[i].len,
+      (unsigned long)(now - g_artMon[i].lastMs));
+    first = false;
+    if (o > (int)sizeof(buf) - 130) break;
+  }
+  snprintf(buf + o, sizeof(buf) - o, "]}");
+  return buf;
 }
 
 void discoveryTick() {
@@ -303,17 +387,35 @@ void discoveryTick() {
     g_nextPollMs             = now + POLL_PERIOD_MS;
   }
 
-  servicelocatePulse(now);
-
   readUdp();
   drainProbeQueue();
 }
 
 void discoveryRequestLocate(IPAddress ip) {
-  uint32_t now = millis();
-  g_locateIp      = ip;
-  g_locateUntilMs = now + LOCATE_DURATION_MS;
-  g_locateNextMs  = now;            // first pulse on the next tick
+  // Send a simple HTTP POST to /api/locate on the target node.
+  // The node firmware handles the LED blink pattern (v7.6+ feature).
+  // Falls back gracefully if the endpoint doesn't exist (404 = older firmware).
+  EthernetClient client;
+  client.setTimeout(500);  // Quick timeout - this is fire-and-forget
+
+  if (client.connect(ip, 80)) {
+    client.print("POST /api/locate HTTP/1.0\r\n");
+    client.print("Host: ");
+    client.print(ip);
+    client.print("\r\n");
+    client.print("Content-Length: 0\r\n");
+    client.print("Connection: close\r\n");
+    client.print("\r\n");
+
+    // Wait briefly for response (don't care about the body, just status)
+    uint32_t start = millis();
+    while (client.connected() && millis() - start < 500) {
+      if (client.available()) {
+        client.read();  // drain to prevent socket hang
+      }
+    }
+    client.stop();
+  }
 }
 
 // Fire a quick burst of broadcast ArtPolls. Used at fallback-takeover time:

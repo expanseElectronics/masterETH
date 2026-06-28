@@ -4,9 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Firmware for the **expanseElectronics masterETH** — an ESP-07-based management box that lives on the lighting LAN, automatically discovers expanseElectronics nodes (currently dualETH-PixelControl Gen5 v7.3+), and exposes a single SPA web UI for managing all of them in one place. Sibling product to dualETH; same Gen5 PCB *without the DMX driver IC / DMX connectors*. Same ESP-07, same W5500 Ethernet, same single WS2812 status LED on GPIO 4. The DMX driver pins (GPIO 1, 2, 16) are unpopulated.
+Firmware for the **expanseElectronics masterETH** — an ESP-07-based management box that lives on the lighting LAN, automatically discovers expanseElectronics nodes, and exposes a single SPA web UI for managing all of them in one place. Sibling product to dualETH; same Gen5 PCB *without the DMX driver IC / DMX connectors*. Same ESP-07, same W5500 Ethernet, same single WS2812 status LED on GPIO 4. The DMX driver pins (GPIO 1, 2, 16) are unpopulated.
 
-Current firmware: **v1.1** (`FIRMWARE_VERSION` in `include/manager.h`). Read `manager-handover.md` and `manager-handover-addendum.md` (in the parent directory) for the read-side and write-side architecture briefs respectively, before making non-obvious changes.
+Discovered/managed node families:
+- **dualETH-PixelControl Gen5** v7.3+ — 2 ports (A/B). v7.4+ ships CORS (write-capable); v7.3 is read-only.
+- **quadETH-Gen1-HALO** — 4 symmetric ports (A–D), ESP32-based, with an on-board SH1107/SH1106 OLED. Versioned on a `0.x.x` scheme; all versions ship CORS, so the registry treats every quadETH as `Compatible`. The masterETH SPA renders quadETH-specific surfaces (4-port config, OLED mirror, display settings, factory reset) — see "quadETH support in the SPA" below.
+
+Current firmware: **v2.1** (`FIRMWARE_VERSION` in `include/manager.h`). Read `manager-handover.md` and `manager-handover-addendum.md` (in the parent directory) for the read-side and write-side architecture briefs respectively, before making non-obvious changes.
 
 ## Build / flash / monitor
 
@@ -18,15 +22,15 @@ pio run -t upload          # serial upload (115200, nodemcu reset method)
 pio device monitor         # serial monitor at 115200 (sometimes broken on this pio install — see below)
 ```
 
-**Serial port for the prototype masterETH:** `/dev/cu.usbserial-2120` on the development machine. Confirm with `ls /dev/cu.usbserial-*` after plugging in.
+**Serial port for the prototype masterETH:** `/dev/cu.usbserial-2110` on the development machine. Confirm with `ls /dev/cu.usbserial-*` after plugging in. **Note:** `/dev/cu.usbserial-2120` is the ESP32 **quadETH** dev board — esptool will refuse a masterETH (ESP8266) upload there with "This chip is ESP32 not ESP8266". Don't flash masterETH firmware to it.
 
-**Test setup:** prototype board MAC `C8:C9:A3:B3:A8:CD`, currently at `10.50.1.147` on the user's LAN via DHCP. Test-target dualETH MAC `34:5F:45:5A:E5:37`.
+**Test setup:** prototype masterETH MAC `A8:48:FA:E8:48:AE`, at `10.50.1.123` on the user's LAN via DHCP (the IP floats across reboots — find it via the serial boot line `[boot] expanseElectronics masterETH vX.Y`, or by MAC in the registry). Test-target **quadETH** at `10.50.1.157`, MAC `E0:8C:FE:56:64:17`, serial `QE-257FM06X25A0`. A dualETH (`A8:48:FA:E8:2C:BB`, v7.6.0) is also in the fleet.
 
 **`pio device monitor` is broken** on the user's current PlatformIO install (Python click traceback on `start_terminal`). Workaround: use pyserial directly:
 ```bash
 ~/.platformio/penv/bin/python -c "
 import serial, time, sys
-s = serial.Serial('/dev/cu.usbserial-2120', 115200, timeout=0.5)
+s = serial.Serial('/dev/cu.usbserial-2110', 115200, timeout=0.5)
 end = time.time() + 30
 while time.time() < end:
     line = s.readline()
@@ -40,7 +44,7 @@ while time.time() < end:
 
 The SPA lives in **`data/index.html`** (source of truth) and is mirrored as a PROGMEM string in **`src/ui.cpp`** (consumed by `serveIndex()` in `api.cpp`). LittleFS is *not* used to serve it — `streamFile()` wedges the W5500 on files >8 KB. Same constraint as dualETH.
 
-**After editing `data/index.html`, regenerate `src/ui.cpp` with the python one-liner embedded in the comment at the top of `data/index.html`**, then `pio run -t upload`. The current SPA is ~78 KB of HTML.
+**After editing `data/index.html`, regenerate `src/ui.cpp` with the python one-liner embedded in the comment at the top of `data/index.html`**, then `pio run -t upload`. The current SPA is ~136 KB of HTML. `send_P` chunks it fine at `MAX_SOCK_NUM=4` — the old "28,672-byte truncation" only bites at `MAX_SOCK_NUM=8` (smaller per-socket TX buffer), so don't read the size as a hard cap.
 
 The auto-generated `src/ui.cpp` includes `manager.h`. This is **load-bearing** — `manager.h` transitively pulls in `api.h`'s `extern const char uiHtml[] PROGMEM;` declaration, which is what gives the definition external linkage. Without that prior `extern`, `const` at namespace scope in C++ is internal linkage and `api.cpp:serveIndex()` fails to link. Don't simplify the include to `<Arduino.h>` only.
 
@@ -87,7 +91,20 @@ POST /api/firmware/prepare          arm OTA mode for next reboot
 POST /upload                        multipart firmware blob (firmUpdate.cpp)
 ```
 
-The SPA also calls **node** endpoints directly cross-origin (no proxy) — `/api/network`, `/api/ports/A`, `/api/ports/B`, `/api/reboot`, `/api/identify` on `http://<node-ip>` rather than masterETH. This is the architecture from `manager-handover-addendum.md`: dualETH v7.4+ ships CORS, masterETH does no proxying for writes.
+The SPA also calls **node** endpoints directly cross-origin (no proxy) — `/api/network`, `/api/ports/A..D`, `/api/reboot`, `/api/identify`, and the quadETH extras (`/api/oled`, `/api/display`, `/api/factory-reset`) on `http://<node-ip>` rather than masterETH. This is the architecture from `manager-handover-addendum.md`: dualETH v7.4+ / all quadETH ship CORS, masterETH does no proxying for writes.
+
+## quadETH support in the SPA
+
+All quadETH-specific behavior lives in **`data/index.html`** (no masterETH firmware logic — every quadETH endpoint is node-side and called cross-origin). Detection is purely client-side: `isQuadNode(n)` matches `deviceType` against `/^quadETH/i`, and `portLettersFor(n)` returns `['A','B','C','D']` for quadETH vs `['A','B']` for dualETH. **Anywhere the UI enumerates ports, drive it off `portLettersFor(n)` — never hardcode A/B.**
+
+What's wired up (node detail page = tabbed: Identity / Configuration / Display):
+- **4-port config** — `wireEditForms` + `renderPortForm` render A–D for quadETH. All four modes (DMX out / DMX out+RDM / DMX in / WS2812) are offered on **every** quadETH port (dualETH still restricts port B). Save preserves out-of-UI fields via the per-port `portCfgCache` pass-through merge.
+- **Display tab** (quadETH only) — live OLED mirror: `pollOled()` GETs `/api/oled` at 1 Hz (in-flight–guarded, started on tab-enter, torn down via `stopOledMirror()` in `stopPollTimer()` and on tab-leave). `/api/oled` returns `{w,h,screen,fb}` where `fb` is a base64 **row-major, 1bpp, MSB-leftmost** framebuffer (NOT SSD1306 page layout) — `drawOled()` decodes it. Below the canvas, the display settings form GETs/POSTs `/api/display` (`{enabled,cycle,dwellMs,contrast,panel,panelNames,screens,names}`).
+- **Factory Reset** (quadETH only) — confirm-gated button in Configuration → POST `/api/factory-reset` → routes back to the node list.
+- **Per-port live data** — quadETH `/api/status` reports per-port rates in a `ports[]` array (`{name,rate,status,...}`), NOT dualETH's `portARate`/`portBRate` scalars. `portActivityFromStatus(s)` normalizes both shapes into `{A:{rate,status},...}`; the status-poller history stores a per-port `rates` map. Live Trends sparklines, the Nodes-list activity strip, and the System fleet-pkt/s aggregate all iterate the node's actual ports.
+- **Universe map** — `computeConsumedUniverses(cfg)` derives WS2812 universe span from `numPixels` (`ceil(numPixels/170)`, min 1), not the raw `universe[]` array (the node always returns a 4-entry array, so trusting its length produced phantom universes / false conflicts).
+
+Advanced Mode (quadETH's own UI gates Display/Self-Test behind it) is **not** replicated — masterETH operators are advanced, so these surfaces always show. Self-Test (`/api/selftest`) is intentionally not surfaced.
 
 ## Hard constraints — read before changing
 
@@ -134,16 +151,15 @@ masterETH brand wordmark mirrors the dualETH `dualETH<br><span>PixelControl</spa
 
 **Phase 1 polish (shipped):** vendor filter (only show expanseElectronics nodes on the list). Per-node `nodeApi` queue (single-listener compatibility). Background `/api/status` poller (parallel-across-nodes, sequential-per-node) with rolling history. Live activity strip on Nodes list (port mode + pkt/sec + dot). User tags via localStorage (MAC-keyed). Search box + `/` shortcut + `↑↓ Enter` keyboard nav. Compatibility audit count in the summary line. System page Fleet Health aggregate.
 
-**Phase 2 (queued, no node firmware change required):**
-- Universe map + conflict detection (table of `(net,subnet,universe) → [node:port]` from cached `/api/ports/A,B`)
-- Sparklines on detail page (canvas, last ~5 min from `nodeStatusCache.history`)
-- Configuration backup / restore / diff (download fleet config as JSON, upload to apply)
-- Bulk operations (multi-select on Nodes list → set sequential universes / reboot all)
-- "Locate" via masterETH-side ArtDmx unicast (briefly flashes target node's activity LED, no dualETH change)
+**Phase 2 (shipped):** Universe map + conflict detection (`renderUniverses` / `computeConsumedUniverses`, now port-list-aware A–D). Sparklines on detail page (per-port, canvas, last ~5 min from `nodeStatusCache.history`). Configuration backup / restore / diff. Bulk operations (multi-select on Nodes list → set sequential universes / reboot all). "Locate" — reworked from the ArtDmx/ArtPoll pulse to an HTTP `POST /api/locate` on the target node (node owns the LED blink); masterETH also flashes its own LED.
 
-**Future (would need dualETH firmware change):**
-- Proper identify-blink (a known LED pattern on demand) — replaces the hacky ArtDmx-pulse "Locate" above
-- Scene capture/restore at fleet scale (depends on dualETH exposing current DMX state)
+**v1.2 firmware (in tree, write-side):** node-registry EEPROM persistence (stable fields survive reboot, repopulate IP from ArtPoll on boot). First-boot onboarding wizard (`firstBoot` in `/api/identify`, `POST /api/onboarding-done`, deferred-reboot on `/api/network` `"defer":true`). Node `serialNumber` threaded identify → registry → `/api/nodes` → SPA. ⚠️ **Known bug:** the onboarding EEPROM flag (`ONBOARD_FLAG_ADDR 512` in `store.h`) collides with the DHCP-server lease blob (`EEPROM_LEASE_OFFSET 512` in `dhcpServer.cpp`). Move the flag to a free byte (e.g. 3881, in the reserved tail past the node cache) before relying on either.
+
+**v2.1 (shipped):** quadETH-Gen1-HALO support across the SPA — see "quadETH support in the SPA" above.
+
+**Future (would need node firmware change):**
+- Scene capture/restore at fleet scale (depends on the node exposing current DMX state)
+- Surfacing quadETH `/api/selftest`, RDM discover/get (`/api/rdm/*`), and the richer `/api/status` fields (chip/ambient temp, per-port merge sources) if useful in the fleet view
 
 ## Reference
 

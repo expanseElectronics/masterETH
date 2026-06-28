@@ -4,9 +4,11 @@
 // discovery.cpp from ArtPollReply parses + /api/identify probes; consumed
 // by api.cpp (GET /api/nodes) and statusLeds.cpp (online-count → LED).
 //
-// Persistence: deliberately none. The list rebuilds from ArtPoll on every
-// boot in <30 s. Persisting would force EEPROM writes on every state
-// change (online↔offline, last-seen ms) and burn the flash sector quickly.
+// Persistence (v1.2+): stable fields (MAC, nodeName, deviceType, firmware,
+// compat) are cached to EEPROM so the fleet list survives reboots. Volatile
+// fields (IP, lastSeenMs, online) are not persisted — they rebuild from
+// ArtPoll within ~30 s. Saves only on identify (not on seen/expire) to
+// limit flash wear.
 
 #pragma once
 
@@ -41,6 +43,7 @@ struct ManagedNode {
   char        nodeName[18];
   char        deviceType[40];
   char        firmwareVersion[12];
+  char        serialNumber[16];    // human-readable serial from /api/identify
   uint32_t    lastSeenMs;          // millis() of last ArtPollReply
   uint32_t    lastIdentifiedMs;    // millis() of last successful identify
   uint32_t    nextProbeMs;         // millis() at which next identify probe is due
@@ -64,7 +67,8 @@ ManagedNode* nodeRegistryNoteSeen(IPAddress ip, const uint8_t mac[6]);
 void nodeRegistryNoteIdentified(ManagedNode* node,
                                 const char* nodeName,
                                 const char* deviceType,
-                                const char* firmwareVersion);
+                                const char* firmwareVersion,
+                                const char* serialNumber);
 
 void nodeRegistryNoteIncompatible(ManagedNode* node);
 
@@ -78,3 +82,9 @@ uint8_t nodeRegistryOnlineCount();
 // Iteration helpers for /api/nodes serializer.
 const ManagedNode* nodeRegistryAt(uint8_t index);
 uint8_t nodeRegistryCapacity();
+
+// Persistence (v1.2+) — save/load stable fields to/from EEPROM. Load is
+// called after nodeRegistryBegin() in setup(); save is called after every
+// successful identify probe in discovery.cpp.
+void nodeRegistryLoad();
+void nodeRegistrySave();
