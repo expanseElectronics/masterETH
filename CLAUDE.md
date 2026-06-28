@@ -10,7 +10,7 @@ Discovered/managed node families:
 - **dualETH-PixelControl Gen5** v7.3+ — 2 ports (A/B). v7.4+ ships CORS (write-capable); v7.3 is read-only.
 - **quadETH-Gen1-HALO** — 4 symmetric ports (A–D), ESP32-based, with an on-board SH1107/SH1106 OLED. Versioned on a `0.x.x` scheme; all versions ship CORS, so the registry treats every quadETH as `Compatible`. The masterETH SPA renders quadETH-specific surfaces (4-port config, OLED mirror, display settings, factory reset) — see "quadETH support in the SPA" below.
 
-Current firmware: **v2.1** (`FIRMWARE_VERSION` in `include/manager.h`). Read `manager-handover.md` and `manager-handover-addendum.md` (in the parent directory) for the read-side and write-side architecture briefs respectively, before making non-obvious changes.
+Current firmware: **v2.2** (`FIRMWARE_VERSION` in `include/manager.h`) — the "hardware DMX-Workshop" release: per-quadETH **RDM** + **Scenes** tabs, a **DMX Test** generator page, an **Art-Net Monitor** page, and **Fleet firmware OTA**, plus quadETH port-config + telemetry fixes (see "quadETH support in the SPA" and "DMX-Workshop features" below). Read `manager-handover.md` and `manager-handover-addendum.md` (in the parent directory) for the read-side and write-side architecture briefs respectively, before making non-obvious changes.
 
 ## Build / flash / monitor
 
@@ -89,22 +89,39 @@ POST /api/network                   save own network config
 POST /api/reboot                    trigger reboot
 POST /api/firmware/prepare          arm OTA mode for next reboot
 POST /upload                        multipart firmware blob (firmUpdate.cpp)
+POST /api/artdmx?net=&subnet=&universe=&len=&fill=&set=ch:val,…
+                                    DMX test generator — builds a universe frame
+                                    and broadcasts it as ArtDmx (sendArtDmx,
+                                    discovery.cpp). Query-arg, no JSON. (v2.2)
+GET  /api/artnet-monitor            live ArtDmx activity, tallied passively on the
+                                    discovery socket (artnetMonitorJson). (v2.2)
 ```
 
-The SPA also calls **node** endpoints directly cross-origin (no proxy) — `/api/network`, `/api/ports/A..D`, `/api/reboot`, `/api/identify`, and the quadETH extras (`/api/oled`, `/api/display`, `/api/factory-reset`) on `http://<node-ip>` rather than masterETH. This is the architecture from `manager-handover-addendum.md`: dualETH v7.4+ / all quadETH ship CORS, masterETH does no proxying for writes.
+The SPA also calls **node** endpoints directly cross-origin (no proxy) — `/api/network`, `/api/ports/A..D`, `/api/reboot`, `/api/identify`, the quadETH extras (`/api/oled`, `/api/display`, `/api/factory-reset`), and the v2.2 quadETH surfaces (`/api/rdm/*`, `/api/scenes/*`, `/api/update` for fleet OTA) on `http://<node-ip>` rather than masterETH. This is the architecture from `manager-handover-addendum.md`: dualETH v7.4+ / all quadETH ship CORS, masterETH does no proxying for writes. **Gotcha:** the quadETH `/api/rdm/{discover,get,set}` are all **POST** (even "get"), and `discover` replies `text/plain` "started" — so `nodeApi()` was made tolerant of non-JSON node replies (parses JSON when it can, else returns `{text}`).
 
 ## quadETH support in the SPA
 
 All quadETH-specific behavior lives in **`data/index.html`** (no masterETH firmware logic — every quadETH endpoint is node-side and called cross-origin). Detection is purely client-side: `isQuadNode(n)` matches `deviceType` against `/^quadETH/i`, and `portLettersFor(n)` returns `['A','B','C','D']` for quadETH vs `['A','B']` for dualETH. **Anywhere the UI enumerates ports, drive it off `portLettersFor(n)` — never hardcode A/B.**
 
-What's wired up (node detail page = tabbed: Identity / Configuration / Display):
-- **4-port config** — `wireEditForms` + `renderPortForm` render A–D for quadETH. All four modes (DMX out / DMX out+RDM / DMX in / WS2812) are offered on **every** quadETH port (dualETH still restricts port B). Save preserves out-of-UI fields via the per-port `portCfgCache` pass-through merge.
+What's wired up (node detail page = tabbed: Identity / Configuration / **RDM** / **Scenes** / Display — RDM+Scenes are quadETH-only):
+- **4-port config** — `wireEditForms` + `renderPortForm` render A–D for quadETH. **Port-mode options come from the node's reported `portCapabilities`, NOT a hardcoded list** (`portModesFor(n,port,cfg)`; the live identify is stashed on `n._identify` by `fetchLiveIdentifyWithResync`). **quadETH has NO WS2812 mode** — its enum is `0=DMX Out, 1=DMX Out+RDM, 2=DMX In, 3=Scene Output` (set on the node's own Scenes tab, not here). The dualETH `PORT_MODES` (whose `v:3` *is* WS2812) is used only for dualETH. `modeLabel(mode,n)` and `computeConsumedUniverses(cfg,n)` are node-aware so a quadETH mode-3 port reads "Scene Output" and consumes one universe (not a WS2812 chain). Save preserves out-of-UI fields via the per-port `portCfgCache` pass-through merge.
+- **Telemetry block** (Identity tab, `renderTelemetry`) — best-effort from `/api/status` (+`/api/witness` on quadETH): ambient/chip temp, socket pool, ArtSync, MAX14830 self-heals, per-port merge sources, and the self-test witness (version/mux/fps). Any field an older node omits is skipped.
+- **RDM tab** (quadETH only, `renderRdmTab`) — fleet RDM controller over `/api/rdm/*`: per-port Discover (POST discover → poll `/api/status` `ports[i].rdm_phase`/`rdm_responses`/`rdm_tod[]`) → fixture cards with **Set DMX address** (PID `0x00F0`), **Identify** (`0x1000`), **Device Info** (`0x0060`, decoded), and a raw GET/SET. UIDs `AABB:CCDDEEFF`.
+- **Scenes tab** (quadETH only, `renderScenesTab`) — 8 FRAM slots over `/api/scenes/*`: Save current / Recall / Clear + name. The **Master Cue** (on the DMX Test page) recalls a slot across *every* online quadETH at once.
 - **Display tab** (quadETH only) — live OLED mirror: `pollOled()` GETs `/api/oled` at 1 Hz (in-flight–guarded, started on tab-enter, torn down via `stopOledMirror()` in `stopPollTimer()` and on tab-leave). `/api/oled` returns `{w,h,screen,fb}` where `fb` is a base64 **row-major, 1bpp, MSB-leftmost** framebuffer (NOT SSD1306 page layout) — `drawOled()` decodes it. Below the canvas, the display settings form GETs/POSTs `/api/display` (`{enabled,cycle,dwellMs,contrast,panel,panelNames,screens,names}`).
 - **Factory Reset** (quadETH only) — confirm-gated button in Configuration → POST `/api/factory-reset` → routes back to the node list.
 - **Per-port live data** — quadETH `/api/status` reports per-port rates in a `ports[]` array (`{name,rate,status,...}`), NOT dualETH's `portARate`/`portBRate` scalars. `portActivityFromStatus(s)` normalizes both shapes into `{A:{rate,status},...}`; the status-poller history stores a per-port `rates` map. Live Trends sparklines, the Nodes-list activity strip, and the System fleet-pkt/s aggregate all iterate the node's actual ports.
-- **Universe map** — `computeConsumedUniverses(cfg)` derives WS2812 universe span from `numPixels` (`ceil(numPixels/170)`, min 1), not the raw `universe[]` array (the node always returns a 4-entry array, so trusting its length produced phantom universes / false conflicts).
+- **Universe map** — `computeConsumedUniverses(cfg,n)` derives a WS2812 universe span from `numPixels` (`ceil(numPixels/170)`, min 1), not the raw `universe[]` array (the node always returns a 4-entry array, so trusting its length produced phantom universes / false conflicts). For a quadETH `n` it always returns one universe (no WS2812).
 
 Advanced Mode (quadETH's own UI gates Display/Self-Test behind it) is **not** replicated — masterETH operators are advanced, so these surfaces always show. Self-Test (`/api/selftest`) is intentionally not surfaced.
+
+## DMX-Workshop features (v2.2)
+
+masterETH-side surfaces (sidebar pages) that make it a "hardware DMX-Workshop". The RDM/Scenes pieces are *node-side* (per "quadETH support" above); the two below need masterETH **firmware** (UDP):
+
+- **DMX Test page** (`renderTest`) — a mini lighting desk. Target Net/Subnet/Universe, 24 live faders + All-On/Blackout + set-any-channel + the **Master Cue** (fleet scene recall). Each change fires `POST /api/artdmx`; the firmware (`sendArtDmx` in `discovery.cpp`, reusing the discovery UDP socket on 6454) broadcasts one ArtDmx frame — the receiving node re-emits continuous DMX, so one frame per change suffices. State = master `fill` + per-channel overrides (so moving one fader doesn't blank the rest).
+- **Monitor page** (`renderMonitor`) — live Art-Net activity. The firmware parses **ArtDmx already arriving on the discovery socket** (`recordArtDmx`, a 24-entry per-(Port-Address, source-IP) table; **no new socket**, key for the `MAX_SOCK_NUM=4` budget) and serves it at `GET /api/artnet-monitor`. The SPA computes **fps** by diffing packet counts between polls and flags a universe driven by >1 source as a **conflict**. Only sees **broadcast** ArtDmx (unicast to a node bypasses masterETH). **sACN deferred** — it's multicast on 5568 and would need a dedicated socket + per-universe IGMP joins.
+- **Fleet firmware OTA** (`renderFirmware`, "Fleet Firmware Update" card) — pushes a `.expf` (ESP + ATmega-witness bundle) or `.bin` to selected **quadETH** nodes' `/api/update`, browser-direct via `pushFirmware()` XHR (no ESP8266 buffering; node CORS = `*`). Nodes flash sequentially and reboot. quadETH-only — the dualETH uses a different multipart `/upload` endpoint (link out for now).
 
 ## Hard constraints — read before changing
 
@@ -157,9 +174,17 @@ masterETH brand wordmark mirrors the dualETH `dualETH<br><span>PixelControl</spa
 
 **v2.1 (shipped):** quadETH-Gen1-HALO support across the SPA — see "quadETH support in the SPA" above.
 
-**Future (would need node firmware change):**
-- Scene capture/restore at fleet scale (depends on the node exposing current DMX state)
-- Surfacing quadETH `/api/selftest`, RDM discover/get (`/api/rdm/*`), and the richer `/api/status` fields (chip/ambient temp, per-port merge sources) if useful in the fleet view
+**v2.2 (shipped) — the hardware DMX-Workshop pass.** All validated against the live fleet (quadETH `.129`/`.109`, dualETH `.184`). See "DMX-Workshop features" + the v2.2 bullets under "quadETH support":
+- **RDM fleet view** (per-quadETH tab) and **Scenes** (per-quadETH tab + fleet Master Cue) — node-side over `/api/rdm/*` and `/api/scenes/*`.
+- **DMX Test generator** (`POST /api/artdmx` + `sendArtDmx`) and **Art-Net Monitor** (`GET /api/artnet-monitor` + `recordArtDmx` on the shared discovery socket) — masterETH firmware (UDP).
+- **Fleet firmware OTA** — browser-direct `.expf`/`.bin` push to quadETH `/api/update`.
+- quadETH **port-config from `portCapabilities`** (killed the phantom WS2812 mode; mode 3 = Scene Output) + **telemetry block**. `nodeApi` now tolerates non-JSON node replies.
+
+**Future / queued:**
+- **sACN monitor** — the Art-Net half of the Monitor shipped; sACN needs a dedicated multicast socket + per-universe IGMP joins (tight against `MAX_SOCK_NUM=4`).
+- **Fleet OTA for dualETH** — it uses multipart `/upload`, not `/api/update`; the current fleet flasher is quadETH-only.
+- Surfacing quadETH `/api/selftest` in the fleet view; richer RDM (personality/sensors) beyond set-address/identify.
+- ⚠️ Still-open **v1.2 onboarding/DHCP-lease EEPROM collision** (see the v1.2 note above) — unaddressed.
 
 ## Reference
 
