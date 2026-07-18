@@ -105,6 +105,24 @@ nav a.active {
   padding: 12px 20px; border-top: 1px solid var(--border);
   font-size: 11px; color: var(--text-dim);
 }
+.promo {
+  display: block; padding: 12px; margin-bottom: 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; text-decoration: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.promo:hover { border-color: var(--accent); background: rgba(224,120,0,0.06); text-decoration: none; }
+.promo-eyebrow {
+  font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 4px;
+}
+.promo-title {
+  font-family: var(--mono); font-size: 15px; font-weight: 700;
+  color: var(--text); line-height: 1.15; margin-bottom: 5px;
+}
+.promo-title span { color: var(--accent); }
+.promo-sub { font-size: 10px; color: var(--text-dim); line-height: 1.4; }
+.promo:hover .promo-sub { color: var(--text); }
 
 .section-title {
   font-family: var(--mono); font-size: 13px; font-weight: 600;
@@ -239,6 +257,76 @@ nav a.active {
 }
 .tab-btn:hover  { color: var(--text); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── RDM (dualETH fixture controller — ported from dualETH SPA) ── */
+.rdm-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.rdm-bar .spacer { flex: 1; }
+.rdm-state { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+.rdm-state.scanning { color: var(--accent2); }
+.rdm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rdm-table th {
+  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-dim); font-weight: 600; padding: 0 10px 8px 0; border-bottom: 1px solid var(--border);
+}
+.rdm-table td { padding: 10px 10px 10px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.rdm-table tr:last-child td { border-bottom: none; }
+.rdm-uid { font-family: var(--mono); font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.rdm-label { color: var(--text); }
+.rdm-label.unknown { color: var(--text-dim); font-style: italic; }
+.rdm-sub { display: block; font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+.rdm-table input[type=number] { width: 68px; }
+.rdm-table select { width: auto; min-width: 60px; }
+.rdm-fp { color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+.rdm-ident {
+  padding: 4px 10px; font-size: 11px; border-radius: var(--radius); border: 1px solid var(--border2);
+  background: var(--surface2); color: var(--text-dim); cursor: pointer; white-space: nowrap;
+}
+.rdm-ident:hover { border-color: var(--accent); color: var(--text); }
+.rdm-ident.on {
+  background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600;
+  animation: led-pulse 1.2s ease-in-out infinite;
+}
+.rdm-empty { padding: 32px 0; text-align: center; color: var(--text-dim); font-size: 13px; }
+.rdm-note { margin-top: 14px; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+.rdm-warn {
+  margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--warn); border-left-width: 3px;
+  border-radius: var(--radius); background: rgba(224,120,0,0.07); color: var(--text); font-size: 12px;
+}
+.rdm-table tr.open td { border-bottom-color: transparent; }
+.rdm-table tr.open .rdm-uid { color: var(--accent2); }
+.rdm-open {
+  padding: 4px 8px; font-size: 14px; line-height: 1; border-radius: var(--radius);
+  border: 1px solid var(--border2); background: var(--surface2); color: var(--text-dim); cursor: pointer;
+}
+.rdm-open:hover { border-color: var(--accent); color: var(--text); }
+.rdm-detail-cell { padding: 0 !important; }
+.rdm-detail { padding: 16px 0 20px; border-bottom: 1px solid var(--border); }
+.rdm-detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 24px; margin-bottom: 16px;
+}
+.rdm-dk { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; }
+.rdm-dv { font-family: var(--mono); font-size: 13px; color: var(--text); margin-top: 2px; word-break: break-word; }
+.rdm-dv.none { color: var(--text-dim); }
+.rdm-sec {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim);
+  font-weight: 600; padding-bottom: 6px; margin: 18px 0 10px; border-bottom: 1px solid var(--border);
+}
+.rdm-sub-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rdm-sub-table th {
+  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-dim); font-weight: 600; padding: 0 12px 6px 0;
+}
+.rdm-sub-table td { padding: 5px 12px 5px 0; font-family: var(--mono); color: var(--text); }
+.rdm-sub-table td.name { font-family: var(--sans); }
+.rdm-badge {
+  display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 10px; font-weight: 600;
+  font-family: var(--sans); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.rdm-badge.error    { background: rgba(224,51,51,0.16);  color: #ff6b6b; }
+.rdm-badge.warning  { background: rgba(224,120,0,0.16);  color: var(--accent2); }
+.rdm-badge.advisory { background: rgba(58,80,249,0.16);  color: #8b9cff; }
+.rdm-badge.cleared  { background: rgba(34,204,119,0.14); color: var(--ok); }
+.rdm-clean { color: var(--ok); font-size: 12px; }
 
 /* ── Port form heading ───────────────────────────────────── */
 .port-heading {
@@ -685,6 +773,11 @@ input[type=range] { accent-color: var(--accent); width: 220px; vertical-align: m
         <a href="#" id="rebootLink">Reboot</a>
       </nav>
       <div class="sidebar-footer">
+        <a class="promo" href="https://expanseelectronics.com/workshop/" target="_blank" rel="noreferrer">
+          <div class="promo-eyebrow">Also from expanseElectronics</div>
+          <div class="promo-title">expanse<span>Workshop</span></div>
+          <div class="promo-sub">DMX · Art-Net · sACN · RDM for Mac — free →</div>
+        </a>
         <p>PolyForm NC 1.0.0 · <a href="https://github.com/expanseElectronics/" target="_blank" rel="noreferrer">expanseElectronics</a></p>
       </div>
     </aside>
@@ -722,7 +815,30 @@ let oledTimer = null;   // /api/oled poll on the quadETH Display tab
 // has 2 ports and none of the above. Detection is by deviceType prefix from
 // the registry (reliable; set on identify).
 function isQuadNode(n) { return /^quadETH/i.test((n && n.deviceType) || ''); }
+function isDualNode(n) { return /^dualETH/i.test((n && n.deviceType) || ''); }
 function portLettersFor(n) { return isQuadNode(n) ? ['A', 'B', 'C', 'D'] : ['A', 'B']; }
+// Display label for a port. The quadETH labels its ports by faceplate NUMBER
+// (1–4) on its own UI/OLED; the A–D letters in its API are stable identifiers
+// (= 'A' + firmware index), NOT what the device shows. So we display the number
+// but keep the letter as the /api/ports/X routing key. Read `label` from the
+// node's live portCapabilities; fall back to the documented mapping
+// (label = NUM_PORTS − index = ports.length − (letter − 'A')) for older quadETH
+// firmware that predates the field. dualETH has no separate label — letter IS
+// the label.
+function portLabelFor(n, letter) {
+  if (!isQuadNode(n)) return letter;
+  const caps = (n._identify && n._identify.hardware && n._identify.hardware.portCapabilities) || [];
+  const c = caps.find(x => x.port === letter);
+  if (c && c.label != null) return String(c.label);
+  return String(portLettersFor(n).length - (letter.charCodeAt(0) - 65));
+}
+// Letters in faceplate display order so a quadETH reads 1→4 (i.e. D,C,B,A). Only
+// affects display iteration — the letters remain the routing/data key.
+function portDisplayOrderFor(n) {
+  if (!isQuadNode(n)) return portLettersFor(n);
+  return portLettersFor(n).slice().sort((a, b) =>
+    (parseInt(portLabelFor(n, a), 10) || 0) - (parseInt(portLabelFor(n, b), 10) || 0));
+}
 
 function toast(msg, type = 'ok', duration = 3000) {
   const t = $('toast');
@@ -1065,10 +1181,10 @@ function liveStrip(n) {
   const act = portActivityFromStatus(cache.data);
   return `
     <div class="live-strip">
-      ${portLettersFor(n).map(L => {
+      ${portDisplayOrderFor(n).map(L => {
         const p = act[L] || { rate: 0, status: '' };
         return `<span class="port"><span class="ldot${p.rate > 0 ? ' active' : ''}"></span>
-          <span class="m">${L} · ${esc(shortMode(p.status))}</span>
+          <span class="m">${esc(portLabelFor(n, L))} · ${esc(shortMode(p.status))}</span>
           <span class="r">${p.rate}/s</span></span>`;
       }).join('')}
     </div>`;
@@ -1368,7 +1484,7 @@ async function renderNodeDetail(ip, tab) {
   const configAvailable = n.compat === 'compatible' && n.online;
   const isQuad = isQuadNode(n);
   const displayAvailable = configAvailable && isQuad;
-  const rdmAvailable = configAvailable && isQuad;     // RDM controller is quadETH-only
+  const rdmAvailable = configAvailable && (isQuad || isDualNode(n));  // quadETH per-port RDM, or dualETH Port-A RDM
   const scenesAvailable = configAvailable && isQuad;  // FRAM scenes are quadETH-only
   if (tab === 'config' && !configAvailable) tab = 'identity';
   if (tab === 'display' && !displayAvailable) tab = 'identity';
@@ -1444,8 +1560,8 @@ async function renderNodeDetail(ip, tab) {
         <div class="status-grid" style="grid-template-columns: 160px 1fr">
           <div class="sk">Free heap</div>
           <div class="sv"><canvas id="sparkHeap" width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="sparkHeapVal"></span></div>
-          ${portLettersFor(n).map(L => `
-          <div class="sk">Port ${L} pkt/s</div>
+          ${portDisplayOrderFor(n).map(L => `
+          <div class="sk">Port ${esc(portLabelFor(n, L))} pkt/s</div>
           <div class="sv"><canvas id="spark${L}" width="320" height="32" style="width:100%;max-width:360px;height:32px"></canvas><span class="hint" id="spark${L}Val"></span></div>`).join('')}
         </div>
       </div>` : ''}
@@ -1660,6 +1776,7 @@ const QUAD_PORT_MODES = [
   { v: 2, label: 'DMX Input' },
 ];
 const QUAD_MODE_SCENE = 3;
+const QUAD_MODE_FIXTURE = 4;
 const QUAD_CAP_TO_MODE = { dmx_out: 0, rdm_out: 1, dmx_in: 2 };
 function quadModeFromCap(s) {
   const v = QUAD_CAP_TO_MODE[s];
@@ -1677,6 +1794,8 @@ function portModesFor(n, port, cfg) {
       : QUAD_PORT_MODES.slice();
     if (cfg && cfg.mode === QUAD_MODE_SCENE && !list.find(m => m.v === QUAD_MODE_SCENE))
       list = list.concat([{ v: QUAD_MODE_SCENE, label: 'Scene Output (set on node)' }]);
+    if (cfg && cfg.mode === QUAD_MODE_FIXTURE && !list.find(m => m.v === QUAD_MODE_FIXTURE))
+      list = list.concat([{ v: QUAD_MODE_FIXTURE, label: 'Fixture Desk (set on node)' }]);
     return list;
   }
   return port === 'A' ? PORT_MODES : PORT_MODES.filter(m => m.v !== 1 && m.v !== 2);
@@ -1767,9 +1886,11 @@ async function wireEditForms(n) {
     return;
   }
 
+  // Render in faceplate display order (quadETH reads Port 1→4); data is still
+  // fetched/keyed by letter above.
   slot.innerHTML =
     (net ? renderNetworkForm(n, net) : '') +
-    ports.map(p => portCfgs[p] ? renderPortForm(n, p, portCfgs[p]) : '').join('');
+    portDisplayOrderFor(n).map(p => portCfgs[p] ? renderPortForm(n, p, portCfgs[p]) : '').join('');
 
   if (net) wireNetworkForm(n);
   ports.forEach(p => { if (portCfgs[p]) wirePortForm(n, p); });
@@ -1799,7 +1920,7 @@ function renderNetworkForm(n, net) {
 
 function modeLabel(mode, n) {
   if (n && isQuadNode(n))
-    return ({ 0: 'DMX Output', 1: 'DMX Output + RDM', 2: 'DMX Input', 3: 'Scene Output' })[mode] || 'Unknown';
+    return ({ 0: 'DMX Output', 1: 'DMX Output + RDM', 2: 'DMX Input', 3: 'Scene Output', 4: 'Fixture Desk' })[mode] || 'Unknown';
   const m = PORT_MODES.find(x => x.v === mode);
   return m ? m.label : 'Unknown';
 }
@@ -1817,7 +1938,7 @@ function renderPortForm(n, port, cfg) {
   return `
     <div class="config-section">
       <div class="port-heading">
-        <span class="port-label">Port ${esc(port)}</span>
+        <span class="port-label">Port ${esc(portLabelFor(n, port))}</span>
         <span class="port-mode" id="port${esc(port)}ModeTag">${esc(modeLabel(cfg.mode, n))}</span>
       </div>
       <form id="port${esc(port)}EditForm" data-port="${esc(port)}">
@@ -1849,7 +1970,7 @@ function renderPortForm(n, port, cfg) {
           </div>
         </div>`}
         <div class="btn-row">
-          <button type="submit" class="btn-primary">Save Port ${esc(port)}</button>
+          <button type="submit" class="btn-primary">Save Port ${esc(portLabelFor(n, port))}</button>
           <span class="save-status" id="port${esc(port)}EditStatus"></span>
           <span id="port${esc(port)}RebootHint" style="display:none;font-size:12px;color:var(--warn)">Reboot to apply</span>
         </div>
@@ -2209,7 +2330,7 @@ function renderHardwareSection(id) {
           <div class="sk">Directions</div>
           <div class="sk">Modes</div>
           ${hw.portCapabilities.map(p => `
-            <div class="sv" style="background:var(--surface)">${esc(p.port || '?')}</div>
+            <div class="sv" style="background:var(--surface)">${esc(p.label != null ? (p.label + ' (' + (p.port || '?') + ')') : (p.port || '?'))}</div>
             <div class="sv">${(p.directions || []).map(d => '<span class="tag">' + esc(d) + '</span>').join(' ')}</div>
             <div class="sv">${(p.modes || []).map(m => '<span class="tag">' + esc(m) + '</span>').join(' ')}</div>
           `).join('')}
@@ -2303,18 +2424,421 @@ async function renderTelemetry(n) {
     </div>` : '';
 }
 
-// ── RDM (quadETH-only) ───────────────────────────────────────────────────────
+// ── RDM — dualETH path (node-side REST, ported from the dualETH SPA) ──────────
+//
+// The dualETH runs RDM discovery itself (espDMX DISC_UNIQUE_BRANCH) and keeps a
+// device table, so this tab is a cross-origin *view* onto /api/rdm on the node —
+// no console involved. RDM is Port A only (Port B hardware can't receive
+// responses). Surface: GET /api/rdm (table + status), POST /api/rdm/discover
+// {full:true}, GET /api/rdm/detail?uid=, POST /api/rdm/device {uid,...}. All
+// calls go through nodeApi (per-IP queued; dualETH is single-listener). This is
+// entirely separate from the quadETH per-port /api/rdm/* path below.
+let rdmDualNode       = null;   // dualETH whose RDM tab is open
+let rdmDualSigLast    = '';
+let rdmDualLastData   = null;
+let rdmOpenUid        = null;   // UID of the expanded inspector row, or null
+const rdmDetail       = {};     // uid -> /api/rdm/detail payload (cached in-browser)
+let rdmDetailInFlight = false;
+let rdmDetailTimer    = null;
+const persCache       = {};     // uid -> {ready, names[]} personality names
+
+// E1.20 enum tables — only the values a lighting fixture actually reports.
+const LAMP_STATE = { 0:'Off', 1:'On', 2:'Striking', 3:'Standby', 4:'Not present', 0x7F:'Error' };
+const LAMP_MODE  = { 0:'Off (manual strike)', 1:'Strike on DMX', 2:'Strike at power-up', 3:'Strike after homing' };
+const SENS_TYPE = {
+  0:'Temperature', 1:'Voltage', 2:'Current', 3:'Frequency', 4:'Resistance', 5:'Power',
+  6:'Mass', 7:'Length', 8:'Area', 9:'Volume', 10:'Density', 11:'Velocity',
+  12:'Acceleration', 13:'Force', 14:'Energy', 15:'Pressure', 16:'Time', 17:'Angle',
+  18:'Position X', 19:'Position Y', 20:'Position Z', 21:'Angular velocity',
+  22:'Luminous intensity', 23:'Luminous flux', 24:'Illuminance', 25:'Chrominance red',
+  26:'Chrominance green', 27:'Chrominance blue', 28:'Contacts', 29:'Memory',
+  30:'Items', 31:'Humidity', 32:'Counter 16-bit', 0x7F:'Other'
+};
+const SENS_UNIT = {
+  0:'', 1:'°C', 2:'V', 3:'V', 4:'V', 5:'A', 6:'A', 7:'A', 8:'Hz', 9:'Ω', 10:'W',
+  11:'kg', 12:'m', 13:'m²', 14:'m³', 15:'kg/m³', 16:'m/s', 17:'m/s²', 18:'N',
+  19:'J', 20:'Pa', 21:'s', 22:'°', 23:'sr', 24:'cd', 25:'lm', 26:'lx', 27:'IRE', 28:'B'
+};
+const SENS_PREFIX = {
+  0:0, 1:-1, 2:-2, 3:-3, 4:-6, 5:-9, 6:-12, 7:-15, 8:-18, 9:-21, 10:-24,
+  0x11:1, 0x12:2, 0x13:3, 0x14:6, 0x15:9, 0x16:12, 0x17:15, 0x18:18, 0x19:21, 0x1A:24
+};
+
+function rdmStopDetailTimer() { if (rdmDetailTimer) { clearTimeout(rdmDetailTimer); rdmDetailTimer = null; } }
+
+function rdmDualSig(d) {
+  return JSON.stringify(d.devices) + '|' + d.discovering + '|' + d.pending +
+         '|' + d.overflow + '|' + d.truncated +
+         '|' + rdmOpenUid + '|' + JSON.stringify(rdmDetail[rdmOpenUid] || null);
+}
+
+async function renderDualRdmTab(n) {
+  rdmDualNode = n;
+  const pane = $('rdmPane');
+  if (!pane) return;
+  pane.innerHTML = '<div class="loading" style="padding:24px 0">Reading RDM device table…</div>';
+
+  let d;
+  try { d = await nodeApi('GET', n.ip, '/api/rdm'); }
+  catch (e) {
+    pane.innerHTML = '<div class="rdm-empty">RDM isn\'t available on this node — it needs dualETH firmware with the <code>/api/rdm</code> surface.</div>';
+    return;
+  }
+
+  if (!d || !d.enabled) {
+    pane.innerHTML = `
+      <div class="rdm-empty">
+        Port A is not in RDM mode.<br>
+        Set <strong>Port A</strong> to <strong>DMX Output + RDM</strong> in the
+        <a href="#" id="rdmGoPortA">Configuration</a> tab to discover fixtures.
+      </div>
+      <div class="rdm-note">RDM is Port A only — Port B's hardware cannot receive RDM responses.</div>`;
+    const link = $('rdmGoPortA');
+    if (link) link.addEventListener('click', e => { e.preventDefault(); switchDetailTab('config', n.ip); });
+    return;
+  }
+
+  rdmDualSigLast = '';
+  pane.innerHTML = `
+    <div class="subsection">
+      <div class="section-section-title">RDM Devices</div>
+      <div class="rdm-bar">
+        <button id="rdmScan" class="btn btn-primary btn-small">Discover</button>
+        <span class="spacer"></span>
+        <span class="rdm-state" id="rdmDualState"></span>
+      </div>
+      <div id="rdmBody"></div>
+      <div class="rdm-note">
+        The node discovers fixtures on its own — no console required — and keeps the list
+        current as they are plugged and unplugged. <strong>Discover</strong> clears the table
+        and searches the whole UID range from scratch.<br>
+        <strong>Identify</strong> asks the fixture to make itself obvious.
+      </div>
+    </div>`;
+
+  $('rdmScan').addEventListener('click', async () => {
+    try {
+      await nodeApi('POST', n.ip, '/api/rdm/discover', { full: true });
+      rdmOpenUid = null;
+      for (const k of Object.keys(rdmDetail)) delete rdmDetail[k];
+      rdmDualSigLast = '';
+      toast('Discovery started', 'ok');
+    } catch (e) { toast('Could not start discovery', 'err'); }
+  });
+
+  rdmDualPaint(d);
+  stopRdmPoll();
+  rdmPollTimer = setInterval(rdmDualPoll, 2500);
+}
+
+async function rdmDualPoll() {
+  if (currentPage !== 'node-detail' || !rdmDualNode) { stopRdmPoll(); return; }
+  let d;
+  try { d = await nodeApi('GET', rdmDualNode.ip, '/api/rdm'); } catch (e) { return; }
+  if (!d.enabled) { renderDualRdmTab(rdmDualNode); return; }  // Port A left RDM mode elsewhere
+  rdmDualPaint(d);
+  rdmPollDetail();
+}
+
+function rdmDualPaint(d) {
+  const st = $('rdmDualState');
+  if (!st) return;
+  rdmDualLastData = d;
+
+  if (d.discovering) {
+    st.textContent = 'Scanning…'; st.className = 'rdm-state scanning';
+  } else if (d.pending > 0) {
+    st.textContent = `Reading ${d.pending} fixture${d.pending === 1 ? '' : 's'}…`;
+    st.className = 'rdm-state scanning';
+  } else {
+    st.textContent = `${d.count} fixture${d.count === 1 ? '' : 's'}`;
+    st.className = 'rdm-state';
+  }
+
+  const sig = rdmDualSig(d);
+  if (sig === rdmDualSigLast) return;
+
+  // Never rebuild while the user is mid-edit in a field — it would discard a
+  // half-typed address or close an open dropdown.
+  const body = $('rdmBody');
+  const ae = document.activeElement;
+  if (ae && body.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) return;
+
+  rdmDualSigLast = sig;
+  body.innerHTML = rdmTableHtml(d);
+  rdmBind();
+}
+
+function rdmTableHtml(d) {
+  const warn = [];
+  if (d.overflow)
+    warn.push(`More than ${d.maxDevices} fixtures responded. Only the first ${d.maxDevices} are ` +
+              `listed here — a console reading the node's device table over Art-Net still sees them all.`);
+  if (d.truncated) warn.push('The device list was too large to send in full.');
+  const warnHtml = warn.map(w => `<div class="rdm-warn">${esc(w)}</div>`).join('');
+
+  if (!d.devices.length) {
+    return warnHtml + `<div class="rdm-empty">${
+      d.discovering ? 'Searching for fixtures…' : 'No RDM fixtures found on Port A.'
+    }</div>`;
+  }
+
+  return warnHtml + `
+    <table class="rdm-table">
+      <thead><tr>
+        <th>UID</th><th>Fixture</th><th>Address</th><th>Slots</th><th>Mode</th><th></th><th></th>
+      </tr></thead>
+      <tbody>${d.devices.map(rdmRowHtml).join('')}</tbody>
+    </table>`;
+}
+
+function rdmRowHtml(x) {
+  const uid = esc(x.uid);
+  if (x.pending)
+    return `<tr><td class="rdm-uid">${uid}</td>
+                <td colspan="6" class="rdm-label unknown">Reading…</td></tr>`;
+
+  const name = x.model || x.label || '';
+  const sub  = [x.manufacturer, (x.label && x.model && x.label !== x.model) ? x.label : '']
+                 .filter(Boolean).join(' · ');
+  const nameCell = name
+    ? `${esc(name)}${sub ? `<span class="rdm-sub">${esc(sub)}</span>` : ''}`
+    : '<span class="rdm-label unknown">(unnamed)</span>';
+
+  // 0xFFFF start address = a pure sensor/relay device with no DMX slots.
+  const noDmx = !x.info || x.footprint === 0 || x.address === 0 || x.address === 65535;
+  const addrCell = noDmx
+    ? '<span class="rdm-fp">—</span>'
+    : `<input type="number" min="1" max="512" value="${x.address}" data-uid="${uid}" data-f="address">`;
+
+  const names = (persCache[x.uid] && persCache[x.uid].names) || [];
+  const modeText = p => names[p - 1] ? `${p}: ${names[p - 1]}` : String(p);
+  const persCell = (x.personalityCount > 1)
+    ? `<select data-uid="${uid}" data-f="personality">${
+        Array.from({ length: x.personalityCount }, (_, i) => i + 1)
+          .map(p => `<option value="${p}"${p === x.personality ? ' selected' : ''}>${esc(modeText(p))}</option>`)
+          .join('')
+      }</select>`
+    : `<span class="rdm-fp">${x.personality ? esc(modeText(x.personality)) : '—'}</span>`;
+
+  const open = (rdmOpenUid === x.uid);
+  const row = `<tr class="${open ? 'open' : ''}">
+    <td class="rdm-uid">${uid}</td>
+    <td class="rdm-label">${nameCell}</td>
+    <td>${addrCell}</td>
+    <td class="rdm-fp">${noDmx ? '—' : x.footprint}</td>
+    <td>${persCell}</td>
+    <td><button class="rdm-ident${x.identify ? ' on' : ''}" data-uid="${uid}" data-f="identify"
+                data-on="${x.identify ? '1' : '0'}">${x.identify ? 'Identifying' : 'Identify'}</button></td>
+    <td><button class="rdm-open" data-uid="${uid}" data-f="open"
+                title="${open ? 'Hide details' : 'Show hours, sensors, status'}">${open ? '▾' : '▸'}</button></td>
+  </tr>`;
+  if (!open) return row;
+  return row + `<tr><td colspan="7" class="rdm-detail-cell">${rdmDetailHtml(x)}</td></tr>`;
+}
+
+// The node holds the full profile for ONE fixture at a time, so opening a row
+// points the node's inspector at that fixture and we cache the result here.
+async function rdmPollDetail() {
+  rdmStopDetailTimer();
+  if (!rdmOpenUid || rdmDetailInFlight || !rdmDualNode) return;
+  const cached = rdmDetail[rdmOpenUid];
+  if (cached && cached.ready) return;
+
+  rdmDetailInFlight = true;
+  try {
+    const r = await nodeApi('GET', rdmDualNode.ip, '/api/rdm/detail?uid=' + encodeURIComponent(rdmOpenUid));
+    rdmDetail[r.uid] = r;
+    if (r.personalities && r.personalities.length)
+      persCache[r.uid] = { ready: r.ready, names: r.personalities };
+    rdmDualSigLast = '';
+    if (rdmDualLastData) rdmDualPaint(rdmDualLastData);
+  } catch (e) {
+    rdmOpenUid = null;
+    rdmDualSigLast = '';
+  }
+  rdmDetailInFlight = false;
+  if (rdmOpenUid && !(rdmDetail[rdmOpenUid] || {}).ready)
+    rdmDetailTimer = setTimeout(rdmPollDetail, 700);
+}
+
+function sensorValue(s, raw, isRecorded) {
+  if (raw === null || raw === undefined) return '—';
+  if (isRecorded && (raw === -32768 || raw === 32767)) return '—';
+  const exp = SENS_PREFIX[s.prefix] ?? 0;
+  const v = raw * Math.pow(10, exp);
+  const txt = Number.isInteger(v) ? String(v) : v.toFixed(Math.min(3, Math.max(0, -exp)));
+  const unit = SENS_UNIT[s.unit] ?? '';
+  return unit ? `${txt} ${unit}` : txt;
+}
+
+function statusBadge(type) {
+  switch (type) {
+    case 4:  return '<span class="rdm-badge error">Error</span>';
+    case 3:  return '<span class="rdm-badge warning">Warning</span>';
+    case 2:  return '<span class="rdm-badge advisory">Advisory</span>';
+    case 0x14: case 0x13: case 0x12:
+             return '<span class="rdm-badge cleared">Cleared</span>';
+    default: return `<span class="rdm-badge advisory">Type ${type}</span>`;
+  }
+}
+
+function dv(val, suffix) {
+  if (val === null || val === undefined)
+    return '<div class="rdm-dv none">not supported</div>';
+  return `<div class="rdm-dv">${esc(String(val))}${suffix ? ' ' + suffix : ''}</div>`;
+}
+
+function rdmReadProgress(x, t) {
+  const total = 8 + (x.personalityCount || 0) + 2 * (x.sensorCount || 0);
+  if (!t) return 0;
+  let done = 0;
+  for (const k of ['softwareLabel','deviceHours','lampHours','lampStrikes','powerCycles','lampState','lampOnMode'])
+    if (t[k] !== undefined) done++;
+  if (t.status) done++;
+  done += (t.personalities || []).filter(Boolean).length;
+  done += 2 * (t.sensors || []).length;
+  return Math.min(100, Math.round(100 * done / Math.max(1, total)));
+}
+
+function rdmDetailHtml(x) {
+  const t = rdmDetail[x.uid];
+  if (!t || (!t.ready && !t.sensors))
+    return `<div class="rdm-detail">
+      <div class="rdm-state scanning">Reading fixture…</div>
+      <div class="progress-bar show" style="margin-top:10px">
+        <div class="progress-fill" style="width:${rdmReadProgress(x, t)}%"></div>
+      </div>
+      <div class="rdm-dv none" style="margin-top:8px">
+        Pulling hours, sensors and status over RDM — about
+        ${8 + (x.personalityCount || 0) + 2 * (x.sensorCount || 0)} round trips to the fixture.
+      </div>
+    </div>`;
+
+  const modeName = (t.personalities && t.personalities[x.personality - 1]) || '';
+  const fields = [
+    ['Manufacturer',   dv(x.manufacturer || null)],
+    ['Model',          dv(x.model || null)],
+    ['Model ID',       dv(t.modelId)],
+    ['Software',       dv(t.softwareLabel)],
+    ['DMX address',    dv(x.address === 65535 ? null : x.address)],
+    ['Footprint',      dv(x.footprint, 'slots')],
+    ['Mode',           dv(modeName ? `${x.personality}: ${modeName}` : x.personality)],
+    ['Sub-devices',    dv(t.subDeviceCount)],
+    ['Device hours',   dv(t.deviceHours,  t.deviceHours !== null ? 'h' : '')],
+    ['Lamp hours',     dv(t.lampHours,    t.lampHours   !== null ? 'h' : '')],
+    ['Lamp strikes',   dv(t.lampStrikes)],
+    ['Power cycles',   dv(t.powerCycles)],
+    ['Lamp state',     dv(t.lampState  !== null ? (LAMP_STATE[t.lampState] ?? t.lampState) : null)],
+    ['Lamp on mode',   dv(t.lampOnMode !== null ? (LAMP_MODE[t.lampOnMode] ?? t.lampOnMode) : null)],
+  ];
+
+  let html = '<div class="rdm-detail">';
+  if (!t.ready) {
+    const pct = rdmReadProgress(x, t);
+    html += `<div class="rdm-state scanning">Reading fixture… ${pct}%</div>
+             <div class="progress-bar show" style="margin:8px 0 14px">
+               <div class="progress-fill" style="width:${pct}%"></div>
+             </div>`;
+  }
+  html += '<div class="rdm-detail-grid">' + fields.map(([k, v]) =>
+    `<div><div class="rdm-dk">${esc(k)}</div>${v}</div>`).join('') + '</div>';
+
+  const sensors = t.sensors || [];
+  html += `<div class="rdm-sec">Sensors${t.sensorCount ? ` (${sensors.length}/${t.sensorCount})` : ''}</div>`;
+  if (!sensors.length) {
+    html += `<div class="rdm-dv none">${t.sensorCount ? 'Fixture would not describe its sensors.' : 'This fixture has no sensors.'}</div>`;
+  } else {
+    html += `<table class="rdm-sub-table">
+      <thead><tr><th>Sensor</th><th>Type</th><th>Value</th><th>Lowest</th><th>Highest</th></tr></thead>
+      <tbody>${sensors.map(s => `<tr>
+        <td class="name">${esc(s.name || '—')}</td>
+        <td class="name">${esc(SENS_TYPE[s.type] ?? s.type)}</td>
+        <td>${esc(sensorValue(s, s.value))}</td>
+        <td>${esc(sensorValue(s, s.lowest, true))}</td>
+        <td>${esc(sensorValue(s, s.highest, true))}</td>
+      </tr>`).join('')}</tbody></table>`;
+  }
+
+  const status = t.status || [];
+  html += '<div class="rdm-sec">Status messages</div>';
+  if (!status.length) {
+    html += t.ready
+      ? '<div class="rdm-clean">No faults reported.</div>'
+      : '<div class="rdm-dv none">Reading…</div>';
+  } else {
+    html += `<table class="rdm-sub-table">
+      <thead><tr><th>Severity</th><th>Message ID</th><th>Sub-device</th><th>Data</th></tr></thead>
+      <tbody>${status.map(s => `<tr>
+        <td>${statusBadge(s.type)}</td>
+        <td>${esc(s.messageId)}</td>
+        <td>${esc(s.subDevice)}</td>
+        <td>${esc(s.data1)}, ${esc(s.data2)}</td>
+      </tr>`).join('')}</tbody></table>`;
+    if (t.statusOverflow)
+      html += '<div class="rdm-dv none" style="margin-top:8px">The fixture queued more messages than the node kept.</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function rdmBind() {
+  document.querySelectorAll('#rdmBody [data-f]').forEach(el => {
+    const field = el.dataset.f;
+
+    if (field === 'identify') {
+      el.addEventListener('click', () => rdmSet(el.dataset.uid, { identify: el.dataset.on !== '1' }));
+      return;
+    }
+
+    if (field === 'open') {
+      el.addEventListener('click', () => {
+        rdmOpenUid = (rdmOpenUid === el.dataset.uid) ? null : el.dataset.uid;
+        el.blur();
+        rdmStopDetailTimer();
+        rdmDualSigLast = '';
+        if (rdmDualLastData) rdmDualPaint(rdmDualLastData);
+        rdmPollDetail();
+      });
+      return;
+    }
+
+    el.addEventListener('change', () => {
+      const v = parseInt(el.value, 10);
+      if (!Number.isFinite(v)) return;
+      el.blur();   // let the next poll repaint the row with the value read back
+      rdmSet(el.dataset.uid, { [field]: v });
+    });
+  });
+}
+
+async function rdmSet(uid, body) {
+  if (!rdmDualNode) return;
+  try {
+    await nodeApi('POST', rdmDualNode.ip, '/api/rdm/device', Object.assign({ uid }, body));
+    rdmDualSigLast = '';
+    toast('Sent — reading back from fixture…', 'ok');
+  } catch (e) {
+    toast('RDM command failed', 'err');
+  }
+}
+
+// ── RDM — quadETH per-port path (the dualETH /api/rdm path is above) ──────────
 // A fleet-scale RDM controller: discover fixtures on a node's port, then set DMX
 // address / identify / read DEVICE_INFO / raw GET-SET — all via the node's
 // /api/rdm/* (cross-origin, queued by nodeApi). Mirrors the quadETH's own panel.
 //   discover:  POST /api/rdm/discover?port=N  -> poll /api/status ports[N].rdm_*
 //   get/set:   GET|POST /api/rdm/{get,set}?port=N&uid=AABB:CCDDEEFF&pid=0x..&data=..
 let rdmPort = 0, rdmPollTimer = null, rdmBusy = false;
-function stopRdmPoll() { if (rdmPollTimer) { clearInterval(rdmPollTimer); rdmPollTimer = null; } }
+function stopRdmPoll() { if (rdmPollTimer) { clearInterval(rdmPollTimer); rdmPollTimer = null; } rdmStopDetailTimer(); }
 function rdmStat(t) { const e = $('rdmStat'); if (e) e.textContent = t; }
 const uidId = uid => uid.replace(/[^0-9a-fA-F]/g, '');
 
 function renderRdmTab(n) {
+  // Two separate RDM backends: dualETH exposes a self-maintained /api/rdm device
+  // table (handled above); quadETH uses per-port /api/rdm/* discover+poll (here).
+  if (!isQuadNode(n)) return renderDualRdmTab(n);
   const pane = $('rdmPane');
   if (!pane) return;
   const letters = portLettersFor(n);
@@ -2324,7 +2848,12 @@ function renderRdmTab(n) {
       <div class="status-grid" style="grid-template-columns:90px 1fr">
         <div class="sk">Port</div>
         <div class="sv">
-          <select id="rdmPortSel">${letters.map((L, i) => `<option value="${i}">Port ${L}</option>`).join('')}</select>
+          <!-- Relabel to the faceplate number only. value=i and the letter
+               iteration order are deliberately unchanged: rdmPort is used as
+               both /api/rdm/discover?port=N and status.ports[N], and that
+               index↔faceplate-order mapping is a separate pre-existing concern
+               (see the discover comment above) — not reordered here. -->
+          <select id="rdmPortSel">${letters.map((L, i) => `<option value="${i}">Port ${esc(portLabelFor(n, L))}</option>`).join('')}</select>
           <button class="btn btn-primary btn-small" id="rdmDiscBtn">Discover</button>
           <span class="hint" id="rdmStat"></span>
         </div>
@@ -3681,7 +4210,7 @@ async function onboardRenderNetwork() {
       <div class="onboard-headline">Network <span>setup</span></div>
       <div class="onboard-body-text">Pick how the masterETH gets its IP address. DHCP works for most installs; a static IP is wise if you bookmark this page by address. You can also set a friendly node name.</div>
       <form id="onboardNetForm">
-        <div class="form-group"><label>DHCP</label><div><input type="checkbox" name="dhcpEnable" ${d.dhcpEnable?'checked':''}></div></div>
+        <div class="form-group"><label>DHCP</label><div><input type="checkbox" name="dhcpEnable" ${d.dhcp?'checked':''}></div></div>
         <div class="form-group"><label>IP Address</label><div class="ip-row">${ipInputs('ip', d.ip)}</div></div>
         <div class="form-group"><label>Subnet</label><div class="ip-row">${ipInputs('subnet', d.subnet)}</div></div>
         <div class="form-group"><label>Gateway</label><div class="ip-row">${ipInputs('gateway', d.gateway)}</div></div>
@@ -3697,19 +4226,29 @@ async function onboardRenderNetwork() {
   $('onboardSkip').onclick = onboardAdvance;
   $('onboardSave').onclick = async () => {
     const f = $('onboardNetForm');
-    const wasDhcp = d.dhcpEnable;
-    const nowDhcp = f.dhcpEnable.checked;
-    const ip      = readIpInputs(f, 'ip');
-    const body = {
-      dhcpEnable: nowDhcp,
-      ip,
-      subnet:  readIpInputs(f, 'subnet'),
-      gateway: readIpInputs(f, 'gateway'),
-      nodeName: f.nodeName.value,
-      defer: true,
-    };
+    const nowDhcp  = f.dhcpEnable.checked;
+    const ip       = readIpInputs(f, 'ip');
+    const subnet   = readIpInputs(f, 'subnet');
+    const gateway  = readIpInputs(f, 'gateway');
+    const nodeName = f.nodeName.value;
+
+    // Only save — and thus arm the end-of-wizard reboot — if something actually
+    // changed. A deferred /api/network POST unconditionally sets
+    // onboardingPendingReboot on the firmware side (it doesn't diff against the
+    // current settings), so saving an unedited form would force a pointless
+    // reboot. Skip straight to the next step when nothing differs.
+    const octets = a => (a || []).join('.');
+    const changed =
+      nowDhcp  !== !!d.dhcp ||
+      nodeName !== (d.nodeName || '') ||
+      octets(ip)      !== octets(d.ip) ||
+      octets(subnet)  !== octets(d.subnet) ||
+      octets(gateway) !== octets(d.gateway);
+    if (!changed) { onboardAdvance(); return; }
+
     try {
-      const r = await api('POST', '/api/network', body);
+      const r = await api('POST', '/api/network',
+        { dhcp: nowDhcp, ip, subnet, gateway, nodeName, defer: true });
       if (r.defer) {
         onboardChangedIp = true;
         onboardPendingIp = nowDhcp ? null : ip.join('.');

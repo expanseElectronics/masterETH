@@ -11,6 +11,7 @@
 #include "nodeRegistry.h"
 #include "dhcpServer.h"
 #include "nodeTags.h"
+#include "serialConfig.h"
 
 // WiFi shutdown via the C SDK rather than the C++ ESP8266WiFi wrapper.
 // Including <ESP8266WiFi.h> drags in the lwIP DHCP server headers, which
@@ -137,6 +138,7 @@ void loop(void) {
   webServer.handleClient();
   yield();
 
+  serialConfigTick();  // USB config link — works with no network at all
   discoveryTick();
   dhcpServerTick();   // no-op when fallback server isn't active
 

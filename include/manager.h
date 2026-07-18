@@ -32,7 +32,10 @@
 // Compile-time constants.
 // ---------------------------------------------------------------------------
 
-#define FIRMWARE_VERSION    "v2.2"
+// v2.3 — config over USB serial (serialConfig.cpp): the whole REST API is
+// bridged to the cable, so a node on an unknown/unreachable address can be
+// recovered without a reflash.
+#define FIRMWARE_VERSION    "v2.3"
 #define DEVICE_TYPE         "masterETH-HALO"
 #define ESTA_MAN            0x7D00
 

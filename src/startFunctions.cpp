@@ -11,24 +11,14 @@
 void webStart() {
   webServer.on("/", HTTP_GET, serveIndex);
 
-  // REST API — see api.h for the full surface
-  webServer.on("/api/identify",          HTTP_GET,  apiGetIdentify);
-  webServer.on("/api/status",            HTTP_GET,  apiGetStatus);
-  webServer.on("/api/nodes",             HTTP_GET,  apiGetNodes);
-  webServer.on("/api/nodes/identify",    HTTP_GET,  apiGetNodeIdentify);
-  webServer.on("/api/nodes/refresh",     HTTP_POST, apiPostNodesRefresh);
-  webServer.on("/api/nodes/locate",      HTTP_POST, apiPostNodesLocate);
-  webServer.on("/api/artdmx",            HTTP_POST, apiPostArtDmx);
-  webServer.on("/api/artnet-monitor",    HTTP_GET,  apiGetArtnetMonitor);
-  webServer.on("/api/tags",              HTTP_GET,  apiGetTags);
-  webServer.on("/api/tags",              HTTP_POST, apiPostTags);
-  webServer.on("/api/network",           HTTP_GET,  apiGetNetwork);
-  webServer.on("/api/network",           HTTP_POST, apiPostNetwork);
-  webServer.on("/api/dhcp-server/leases", HTTP_GET, apiGetDhcpServerLeases);
-  webServer.on("/api/reboot",            HTTP_POST, apiPostReboot);
-  webServer.on("/api/locate",            HTTP_POST, apiPostLocate);
-  webServer.on("/api/firmware/prepare",  HTTP_POST, apiPostFirmwarePrepare);
-  webServer.on("/api/onboarding-done",   HTTP_POST, apiPostOnboardingDone);
+  // The REST surface is declared ONCE, in API_ROUTES (api.cpp), and registered
+  // from it here. The USB serial link routes through the very same array
+  // (apiDispatch), so there is no second list to fall out of step: an endpoint
+  // added there works on the network and over the cable at the same moment.
+  for (size_t i = 0; i < API_ROUTE_COUNT; i++) {
+    const ApiRoute& r = API_ROUTES[i];
+    webServer.on(r.path, r.post ? HTTP_POST : HTTP_GET, r.handler);
+  }
 
   webServer.on("/upload", HTTP_POST, webFirmwareUpdate, webFirmwareUpload);
 

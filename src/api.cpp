@@ -18,13 +18,37 @@
 #include "nodeTags.h"
 
 // ---------------------------------------------------------------------------
+// Where a request came from, and where its reply goes.
+//
+// Every handler below reads its arguments and writes its response through
+// `apiTransport` rather than touching `webServer` directly. That's what lets the
+// USB serial link (serialConfig.cpp) run the *same handlers* the web server runs,
+// so the two surfaces cannot drift: an endpoint added for the SPA is reachable
+// over the cable the day it exists, with no extra code.
+//
+// The web transport is the default and is restored after every serial command.
+// ---------------------------------------------------------------------------
+
+class WebTransport : public ApiTransport {
+public:
+  bool   hasArg(const char* key) override { return webServer.hasArg(key); }
+  String arg(const char* key) override    { return webServer.arg(key); }
+  void   send(int code, const char* contentType, const char* payload) override {
+    webServer.send(code, contentType, payload);
+  }
+};
+
+static WebTransport webTransport;
+ApiTransport* apiTransport = &webTransport;
+
+// ---------------------------------------------------------------------------
 // Internal helpers (mirror dualETH api.cpp)
 // ---------------------------------------------------------------------------
 
 static void sendJson(int code, JsonDocument& doc) {
   String body;
   serializeJson(doc, body);
-  webServer.send(code, "application/json", body);
+  apiTransport->send(code, "application/json", body.c_str());
 }
 
 static void sendOK(bool reboot = false) {
@@ -166,9 +190,9 @@ void apiGetIdentify() {
   );
 
   if (n > 0 && (size_t)n < sizeof(json)) {
-    webServer.send(200, "application/json", json);
+    apiTransport->send(200, "application/json", json);
   } else {
-    webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+    apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
   }
 }
 
@@ -230,9 +254,9 @@ void apiGetStatus() {
   );
 
   if (n > 0 && (size_t)n < sizeof(json)) {
-    webServer.send(200, "application/json", json);
+    apiTransport->send(200, "application/json", json);
   } else {
-    webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+    apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
   }
 }
 
@@ -247,7 +271,7 @@ void apiGetNodes() {
   size_t off = 0;
 
   int n = snprintf(json + off, sizeof(json) - off, "{\"nodes\":[");
-  if (n < 0) { webServer.send(500, "application/json", "{\"error\":\"snprintf\"}"); return; }
+  if (n < 0) { apiTransport->send(500, "application/json", "{\"error\":\"snprintf\"}"); return; }
   off += n;
 
   bool first = true;
@@ -284,7 +308,7 @@ void apiGetNodes() {
       (unsigned long)lastSeenSecondsAgo
     );
     if (n < 0 || (size_t)n >= sizeof(json) - off) {
-      webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+      apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
       return;
     }
     off += n;
@@ -293,11 +317,11 @@ void apiGetNodes() {
 
   n = snprintf(json + off, sizeof(json) - off, "]}");
   if (n < 0 || (size_t)n >= sizeof(json) - off) {
-    webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+    apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
     return;
   }
 
-  webServer.send(200, "application/json", json);
+  apiTransport->send(200, "application/json", json);
 }
 
 // ---------------------------------------------------------------------------
@@ -312,21 +336,21 @@ void apiGetNodes() {
 // load; not used in any auto-poll path.
 // ---------------------------------------------------------------------------
 void apiGetNodeIdentify() {
-  if (!webServer.hasArg("ip")) { sendError("Missing ip parameter"); return; }
+  if (!apiTransport->hasArg("ip")) { sendError("Missing ip parameter"); return; }
   IPAddress ip;
-  if (!ip.fromString(webServer.arg("ip"))) { sendError("Invalid ip"); return; }
+  if (!ip.fromString(apiTransport->arg("ip"))) { sendError("Invalid ip"); return; }
 
   static char body[1024];
   int n = discoveryHttpGet(ip, "/api/identify", body, sizeof(body), 2000);
   if (n <= 0) {
-    webServer.send(502, "application/json",
+    apiTransport->send(502, "application/json",
       "{\"success\":false,\"error\":\"Node unreachable\"}");
     return;
   }
   // Pass the node's response through verbatim — it's already JSON.
   // The masterETH adds no envelope; the SPA reads it as if calling the
   // node directly, which means we don't have to track the schema here.
-  webServer.send(200, "application/json", body);
+  apiTransport->send(200, "application/json", body);
 }
 
 // ---------------------------------------------------------------------------
@@ -336,7 +360,7 @@ void apiGetNodeIdentify() {
 // ---------------------------------------------------------------------------
 void apiPostNodesRefresh() {
   discoveryRequestImmediatePoll();
-  webServer.send(202, "application/json", "{\"success\":true,\"queued\":true}");
+  apiTransport->send(202, "application/json", "{\"success\":true,\"queued\":true}");
 }
 
 // ---------------------------------------------------------------------------
@@ -346,11 +370,11 @@ void apiPostNodesRefresh() {
 // corresponds to a given row in the SPA.
 // ---------------------------------------------------------------------------
 void apiPostNodesLocate() {
-  if (!webServer.hasArg("ip")) { sendError("Missing ip parameter"); return; }
+  if (!apiTransport->hasArg("ip")) { sendError("Missing ip parameter"); return; }
   IPAddress ip;
-  if (!ip.fromString(webServer.arg("ip"))) { sendError("Invalid ip"); return; }
+  if (!ip.fromString(apiTransport->arg("ip"))) { sendError("Invalid ip"); return; }
   discoveryRequestLocate(ip);
-  webServer.send(202, "application/json", "{\"success\":true,\"queued\":true}");
+  apiTransport->send(202, "application/json", "{\"success\":true,\"queued\":true}");
 }
 
 // POST /api/artdmx?net=&subnet=&universe=&len=&fill=&set=chan:val,chan:val
@@ -359,7 +383,7 @@ void apiPostNodesLocate() {
 // it's cheap on the ESP8266. Channels in `set` are 1-based.
 void apiPostArtDmx() {
   auto argInt = [](const char* k, int def) {
-    return webServer.hasArg(k) ? webServer.arg(k).toInt() : def;
+    return apiTransport->hasArg(k) ? apiTransport->arg(k).toInt() : def;
   };
   int net  = constrain(argInt("net", 0), 0, 127);
   int sub  = constrain(argInt("subnet", 0), 0, 15);
@@ -369,8 +393,8 @@ void apiPostArtDmx() {
 
   static uint8_t dmx[512];
   memset(dmx, (uint8_t)fill, len);
-  if (webServer.hasArg("set")) {
-    String s = webServer.arg("set");
+  if (apiTransport->hasArg("set")) {
+    String s = apiTransport->arg("set");
     int i = 0;
     while (i < (int)s.length()) {
       int comma = s.indexOf(',', i);
@@ -385,13 +409,13 @@ void apiPostArtDmx() {
     }
   }
   sendArtDmx((uint8_t)net, (uint8_t)sub, (uint8_t)uni, dmx, (uint16_t)len);
-  webServer.send(200, "application/json", "{\"success\":true}");
+  apiTransport->send(200, "application/json", "{\"success\":true}");
 }
 
 // GET /api/artnet-monitor — live ArtDmx activity (per universe + source IP),
 // tallied passively from broadcast traffic on the discovery socket.
 void apiGetArtnetMonitor() {
-  webServer.send(200, "application/json", artnetMonitorJson());
+  apiTransport->send(200, "application/json", artnetMonitorJson());
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +438,7 @@ void apiGetTags() {
   static char json[2048];
   size_t off = 0;
   int n = snprintf(json + off, sizeof(json) - off, "{\"tags\":[");
-  if (n < 0) { webServer.send(500, "application/json", "{\"error\":\"snprintf\"}"); return; }
+  if (n < 0) { apiTransport->send(500, "application/json", "{\"error\":\"snprintf\"}"); return; }
   off += n;
 
   bool first = true;
@@ -426,7 +450,7 @@ void apiGetTags() {
                  "%s{\"mac\":\"%s\",\"label\":\"%s\"}",
                  first ? "" : ",", macBuf, t->label);
     if (n < 0 || (size_t)n >= sizeof(json) - off) {
-      webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+      apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
       return;
     }
     off += n;
@@ -434,10 +458,10 @@ void apiGetTags() {
   }
   n = snprintf(json + off, sizeof(json) - off, "]}");
   if (n < 0 || (size_t)n >= sizeof(json) - off) {
-    webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+    apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
     return;
   }
-  webServer.send(200, "application/json", json);
+  apiTransport->send(200, "application/json", json);
 }
 
 // ---------------------------------------------------------------------------
@@ -447,10 +471,10 @@ void apiGetTags() {
 // simpler.
 // ---------------------------------------------------------------------------
 void apiPostTags() {
-  if (!webServer.hasArg("plain")) { sendError("Missing body"); return; }
+  if (!apiTransport->hasArg("plain")) { sendError("Missing body"); return; }
 
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, webServer.arg("plain"));
+  DeserializationError err = deserializeJson(doc, apiTransport->arg("plain"));
   if (err) { sendError("Invalid JSON"); return; }
 
   const char* macStr = doc["mac"];
@@ -464,12 +488,63 @@ void apiPostTags() {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/network
+// The REST surface — declared once, consumed twice.
+//
+// webStart() registers these with the web server; apiDispatch() routes serial
+// commands through the same array. There is no second list to keep in step, so an
+// endpoint cannot exist on the network and 404 over the cable.
 // ---------------------------------------------------------------------------
-void apiGetNetwork() {
-  JsonDocument doc;
+const ApiRoute API_ROUTES[] = {
+  { "/api/identify",           false, apiGetIdentify },
+  { "/api/status",             false, apiGetStatus },
+  { "/api/nodes",              false, apiGetNodes },
+  { "/api/nodes/identify",     false, apiGetNodeIdentify },
+  { "/api/nodes/refresh",      true,  apiPostNodesRefresh },
+  { "/api/nodes/locate",       true,  apiPostNodesLocate },
+  { "/api/artdmx",             true,  apiPostArtDmx },
+  { "/api/artnet-monitor",     false, apiGetArtnetMonitor },
+  { "/api/tags",               false, apiGetTags },
+  { "/api/tags",               true,  apiPostTags },
+  { "/api/network",            false, apiGetNetwork },
+  { "/api/network",            true,  apiPostNetwork },
+  { "/api/dhcp-server/leases", false, apiGetDhcpServerLeases },
+  { "/api/reboot",             true,  apiPostReboot },
+  { "/api/locate",             true,  apiPostLocate },
+  { "/api/firmware/prepare",   true,  apiPostFirmwarePrepare },
+  { "/api/onboarding-done",    true,  apiPostOnboardingDone },
+};
+const size_t API_ROUTE_COUNT = sizeof(API_ROUTES) / sizeof(API_ROUTES[0]);
+
+bool apiDispatch(const char* method, const char* path) {
+  const bool isPost = strcmp(method, "POST") == 0;
+  const bool isGet  = strcmp(method, "GET") == 0;
+  if (!isGet && !isPost) return false;
+
+  for (size_t i = 0; i < API_ROUTE_COUNT; i++) {
+    const ApiRoute& r = API_ROUTES[i];
+    if (strcmp(r.path, path) != 0) continue;
+    if (r.post != isPost) continue;   // same path, different verb (e.g. /api/tags)
+    r.handler();
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Network config — transport-neutral core.
+//
+// These two are the single source of truth for reading and writing the network
+// settings. Both the web handlers below AND the USB serial config link
+// (serialConfig.cpp) go through them, so a node configured over serial lands in
+// exactly the same state as one configured from the SPA. Don't reimplement
+// either side against `deviceSettings` directly — that's how the two drift.
+// ---------------------------------------------------------------------------
+
+void networkConfigToJson(JsonDocument& doc) {
   doc["nodeName"]   = deviceSettings.nodeName;
   doc["longName"]   = deviceSettings.longName;
+  // Key is "dhcp", not "dhcpEnable" — dualETH uses the latter, we use this.
+  // Readers must tolerate both across the fleet.
   doc["dhcp"]       = deviceSettings.dhcpEnable;
   ipToArray(doc.as<JsonObject>(), "ip",      deviceSettings.ip);
   ipToArray(doc.as<JsonObject>(), "subnet",  deviceSettings.subnet);
@@ -483,19 +558,26 @@ void apiGetNetwork() {
   fb["poolSize"]     = deviceSettings.fallbackPoolSize;
   fb["leaseSeconds"] = deviceSettings.fallbackLeaseSeconds;
   fb["currentMode"]  = networkModeString(networkMode);
-
-  sendJson(200, doc);
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/network
-// ---------------------------------------------------------------------------
-void apiPostNetwork() {
-  if (!webServer.hasArg("plain")) { sendError("Missing body"); return; }
-
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, webServer.arg("plain"));
-  if (err) { sendError("Invalid JSON"); return; }
+// Every field is optional — this is a partial update, as the SPA has always
+// relied on. Returns nullptr on success, or a message to show the operator.
+//
+// An IP that isn't a 4-element array used to be coerced silently into garbage
+// (ipFromArray reads absent elements as 0). Over the network that only ever came
+// from our own SPA; over serial it can come from anything, so reject it.
+const char* networkConfigApply(JsonVariantConst doc) {
+  static const char* const kIPKeys[3] = { "ip", "subnet", "gateway" };
+  for (uint8_t i = 0; i < 3; i++) {
+    JsonVariantConst v = doc[kIPKeys[i]];
+    if (!v.isNull() && (!v.is<JsonArrayConst>() || v.size() != 4)) {
+      return "IP, subnet and gateway must each be four numbers";
+    }
+  }
+  if (doc["dhcp"].isNull() && doc["dhcpEnable"].isNull()
+      && doc["ip"].isNull() && doc["nodeName"].isNull()) {
+    return "Nothing to change";
+  }
 
   if (doc["nodeName"].is<const char*>()) {
     strlcpy(deviceSettings.nodeName, doc["nodeName"], sizeof(deviceSettings.nodeName));
@@ -503,18 +585,21 @@ void apiPostNetwork() {
   if (doc["longName"].is<const char*>()) {
     strlcpy(deviceSettings.longName, doc["longName"], sizeof(deviceSettings.longName));
   }
-  if (doc["dhcp"].is<bool>()) {
-    deviceSettings.dhcpEnable = doc["dhcp"];
-  }
-  if (doc["ip"].is<JsonArray>())      deviceSettings.ip      = ipFromArray(doc["ip"]);
-  if (doc["subnet"].is<JsonArray>())  deviceSettings.subnet  = ipFromArray(doc["subnet"]);
-  if (doc["gateway"].is<JsonArray>()) deviceSettings.gateway = ipFromArray(doc["gateway"]);
+  // Accept dualETH's spelling too. The fleet is inconsistent and a wrong-keyed
+  // DHCP flag is invisible: the write is accepted, the mode never changes, and
+  // the node comes back on an address the operator didn't ask for.
+  if (doc["dhcp"].is<bool>())            deviceSettings.dhcpEnable = doc["dhcp"];
+  else if (doc["dhcpEnable"].is<bool>()) deviceSettings.dhcpEnable = doc["dhcpEnable"];
 
-  if (doc["dhcpFallback"].is<JsonObject>()) {
+  if (doc["ip"].is<JsonArrayConst>())      deviceSettings.ip      = ipFromArray(doc["ip"]);
+  if (doc["subnet"].is<JsonArrayConst>())  deviceSettings.subnet  = ipFromArray(doc["subnet"]);
+  if (doc["gateway"].is<JsonArrayConst>()) deviceSettings.gateway = ipFromArray(doc["gateway"]);
+
+  if (doc["dhcpFallback"].is<JsonObjectConst>()) {
     JsonVariantConst fb = doc["dhcpFallback"];
     if (fb["enabled"].is<bool>())         deviceSettings.dhcpFallbackEnabled = fb["enabled"];
-    if (fb["ip"].is<JsonArray>())         deviceSettings.fallbackIp          = ipFromArray(fb["ip"]);
-    if (fb["subnet"].is<JsonArray>())     deviceSettings.fallbackSubnet      = ipFromArray(fb["subnet"]);
+    if (fb["ip"].is<JsonArrayConst>())    deviceSettings.fallbackIp          = ipFromArray(fb["ip"]);
+    if (fb["subnet"].is<JsonArrayConst>()) deviceSettings.fallbackSubnet     = ipFromArray(fb["subnet"]);
     if (fb["poolStart"].is<unsigned>())   deviceSettings.fallbackPoolStart   = fb["poolStart"];
     if (fb["poolSize"].is<unsigned>())    deviceSettings.fallbackPoolSize    = fb["poolSize"];
     if (fb["leaseSeconds"].is<unsigned>()) deviceSettings.fallbackLeaseSeconds = fb["leaseSeconds"];
@@ -530,6 +615,43 @@ void apiPostNetwork() {
   }
 
   eepromSave();
+  return nullptr;
+}
+
+// Identity, as a document rather than the snprintf blob apiGetIdentify serves.
+// The serial link's "hello" uses this to prove which box is on the cable.
+void identityToJson(JsonDocument& doc) {
+  char macBuf[18]; macToBuffer(macBuf, sizeof(macBuf));
+  doc["vendor"]          = "expanseElectronics";
+  doc["deviceType"]      = DEVICE_TYPE;
+  doc["serial"]          = selfSerial();
+  doc["mac"]             = macBuf;
+  doc["nodeName"]        = deviceSettings.nodeName;
+  doc["firmwareVersion"] = FIRMWARE_VERSION;
+  doc["apiVersion"]      = 1;
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/network
+// ---------------------------------------------------------------------------
+void apiGetNetwork() {
+  JsonDocument doc;
+  networkConfigToJson(doc);
+  sendJson(200, doc);
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/network
+// ---------------------------------------------------------------------------
+void apiPostNetwork() {
+  if (!apiTransport->hasArg("plain")) { sendError("Missing body"); return; }
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, apiTransport->arg("plain"));
+  if (err) { sendError("Invalid JSON"); return; }
+
+  const char* fail = networkConfigApply(doc);
+  if (fail) { sendError(fail); return; }
 
   // Onboarding-wizard defer support: if the wizard is active and the request
   // includes "defer":true, queue the reboot for later (POST /api/onboarding-done)
@@ -557,7 +679,7 @@ void apiGetDhcpServerLeases() {
   int n = snprintf(json + off, sizeof(json) - off,
     "{\"active\":%s,\"leases\":[",
     dhcpServerActive() ? "true" : "false");
-  if (n < 0) { webServer.send(500, "application/json", "{\"error\":\"snprintf\"}"); return; }
+  if (n < 0) { apiTransport->send(500, "application/json", "{\"error\":\"snprintf\"}"); return; }
   off += n;
 
   bool first = true;
@@ -575,7 +697,7 @@ void apiGetDhcpServerLeases() {
       "%s{\"ip\":\"%s\",\"mac\":\"%s\",\"expiresInSeconds\":%ld}",
       first ? "" : ",", ipBuf, macBuf, (long)remaining);
     if (n < 0 || (size_t)n >= sizeof(json) - off) {
-      webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+      apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
       return;
     }
     off += n;
@@ -584,10 +706,10 @@ void apiGetDhcpServerLeases() {
 
   n = snprintf(json + off, sizeof(json) - off, "]}");
   if (n < 0 || (size_t)n >= sizeof(json) - off) {
-    webServer.send(500, "application/json", "{\"error\":\"buffer overflow\"}");
+    apiTransport->send(500, "application/json", "{\"error\":\"buffer overflow\"}");
     return;
   }
-  webServer.send(200, "application/json", json);
+  apiTransport->send(200, "application/json", json);
 }
 
 // ---------------------------------------------------------------------------
