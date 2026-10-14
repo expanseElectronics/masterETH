@@ -4724,9 +4724,11 @@ async function renderFirmware() {
     <hr class="divider">
     <div class="section-title" style="margin-top:8px">Fleet Firmware Update</div>
     <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px">
-      Push firmware to managed <strong>quadETH</strong> nodes over the network — no programmer.
-      <code>.expf</code> bundles the ESP + ATmega witness in one file; <code>.bin</code> is ESP-only.
-      Nodes flash one at a time and reboot when done. Don't navigate away mid-flash.</p>
+      Push firmware to managed <strong>quadETH</strong> and <strong>masterMIDI</strong> nodes over the network — no programmer.
+      Choose the product, then that product's <code>.expf</code> file. Each node checks the file is complete and
+      meant for it before installing. Nodes flash one at a time and reboot when done. Don't navigate away mid-flash.</p>
+    <div class="form-group" style="max-width:320px"><label for="fleetProduct">Product</label>
+      <select id="fleetProduct"><option value="quadETH">quadETH</option><option value="masterMIDI">masterMIDI</option></select></div>
     <div class="file-input-wrapper">
       <input type="file" id="fleetFile" accept=".expf,.bin">
       <div class="file-label" id="fleetLabel">Choose firmware (.expf / .bin)</div>
@@ -4813,20 +4815,33 @@ async function renderFirmware() {
     const anyChecked = !!document.querySelector('#fleetNodes input:checked');
     ffBtn.disabled = !(fleetFileBuf && anyChecked);
   }
-  // Build the node checkbox list (only quadETH — they take /api/update; dualETH
-  // uses a different multipart endpoint and isn't supported here yet).
-  try {
-    const nodes = ((await api('GET', '/api/nodes')).nodes || [])
-      .filter(n => /^quadETH/i.test(n.deviceType || '') && n.online && n.compat === 'compatible');
+  // Build the node checkbox list for ONE product at a time: a firmware file is
+  // one product's, so a mixed list would push quadETH firmware at a masterMIDI.
+  // quadETH and masterMIDI take the raw .expf at /api/update; dualETH uses a
+  // different multipart endpoint and isn't supported here yet.
+  let fleetAll = [];
+  function renderFleetNodes() {
+    const prod = $('fleetProduct').value;
+    const nodes = fleetAll.filter(n => new RegExp('^' + prod, 'i').test(n.deviceType || '')
+                                     && n.online && n.compat === 'compatible');
     const box = $('fleetNodes');
     box.innerHTML = nodes.length
       ? nodes.map(n => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0">
           <input type="checkbox" class="fleetChk" value="${esc(n.ip)}" checked>
           <span>${esc(n.nodeName || n.ip)} <span class="dim" style="font-family:var(--mono)">${esc(n.ip)}</span> · ${esc(n.firmwareVersion)}</span>
           <span class="hint" id="ffStat_${n.ip.replace(/\./g, '_')}"></span></label>`).join('')
-      : '<p style="font-size:13px;color:var(--text-dim)">No online quadETH nodes to update.</p>';
+      : `<p style="font-size:13px;color:var(--text-dim)">No online ${esc(prod)} nodes to update.</p>`;
     box.querySelectorAll('.fleetChk').forEach(c => c.addEventListener('change', refreshFleetBtn));
+    refreshFleetBtn();
+  }
+  try {
+    fleetAll = (await api('GET', '/api/nodes')).nodes || [];
+    // Start on whichever product is actually present.
+    if (!fleetAll.some(n => /^quadETH/i.test(n.deviceType || '')) && fleetAll.some(n => /^masterMIDI/i.test(n.deviceType || '')))
+      $('fleetProduct').value = 'masterMIDI';
+    renderFleetNodes();
   } catch (_) { $('fleetNodes').innerHTML = '<p class="dim">Could not list nodes.</p>'; }
+  $('fleetProduct').addEventListener('change', renderFleetNodes);
 
   ffBtn.addEventListener('click', async () => {
     const ips = Array.from(document.querySelectorAll('#fleetNodes input:checked')).map(c => c.value);
@@ -4852,7 +4867,7 @@ function pushFirmware(ip, blob, onProgress) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open('POST', 'http://' + ip + '/api/update');
-    x.timeout = 120000;
+    x.timeout = 300000;   // masterMIDI takes ~80 s for 1 MB over Ethernet
     x.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
     x.onload = () => x.status === 200 ? resolve(x.responseText || 'ok') : reject(new Error('HTTP ' + x.status + ' ' + x.responseText));
     x.onerror = () => reject(new Error('network error'));
