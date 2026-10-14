@@ -811,6 +811,23 @@ void apiPostOnboardingDone() {
 // ---------------------------------------------------------------------------
 // GET /
 // ---------------------------------------------------------------------------
+// The page is ~245 KB of PROGMEM. The library's send_P() copies it out through
+// a 4 KB buffer from the heap (new[]), and with v2.3's ~4.3 KB of free heap -
+// in pieces - that allocation fails and the ESP8266 resets before a byte of
+// the body goes out: the browser gets the headers, then nothing, every time.
+// Stream it through a small STACK buffer instead, so serving the page needs no
+// heap at all, and yield() between chunks to keep the soft watchdog fed.
 void serveIndex() {
-  webServer.send_P(200, "text/html", uiHtml);
+  const size_t len = strlen_P(uiHtml);
+  webServer.setContentLength(len);
+  webServer.send(200, "text/html", "");          // headers only; body below
+  EthernetClient c = webServer.client();
+  uint8_t buf[512];
+  for (size_t off = 0; off < len;) {
+    const size_t n = (len - off) < sizeof(buf) ? (len - off) : sizeof(buf);
+    memcpy_P(buf, uiHtml + off, n);
+    if (c.write(buf, n) == 0) break;              // client went away
+    off += n;
+    yield();
+  }
 }

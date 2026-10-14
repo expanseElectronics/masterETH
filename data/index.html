@@ -1856,12 +1856,17 @@ async function renderQuadNetDetail(n) {
 // API called cross-origin (masterMIDI ships CORS): /api/status for the live
 // clock and signal flow, /api/routing + /api/timecode for the patch, and
 // /api/selftest. Source values are what the node stores: 4 = none, 5 = Auto
-// (display only), Network In = 6 — look names up by value, never by position.
-const MM_SRC = { 0: 'USB Input', 1: 'DIN Input', 6: 'Network Input', 2: 'SMPTE Input', 3: 'Internal Clock' };
-const MM_SRC_SHORT = { 0: 'USB In', 1: 'DIN In', 2: 'SMPTE In', 3: 'Internal', 6: 'Network In' };
-const MM_SRC_ORDER = [0, 1, 6, 2, 3];
-const MM_OUT = ['USB MIDI out', 'DIN MIDI out', 'SMPTE / LTC out', 'Network MIDI out'];
-const MM_SELF = [0, 1, -1, 6];          // the input each output can't take (its own port)
+// (display only), Network In = 6, Art-Net In = 7 — look names up by value,
+// never by position. A node on older firmware reports fewer outputs (no
+// Art-Net): show only the ones its /api/routing returns, and offer Art-Net In
+// only when it has an Art-Net output too (both arrived in the same release).
+const MM_SRC = { 0: 'USB Input', 1: 'DIN Input', 6: 'Network Input', 7: 'Art-Net Input', 2: 'SMPTE Input', 3: 'Internal Clock' };
+const MM_SRC_SHORT = { 0: 'USB In', 1: 'DIN In', 2: 'SMPTE In', 3: 'Internal', 6: 'Network In', 7: 'Art-Net In' };
+const MM_SRC_ORDER = [0, 1, 6, 7, 2, 3];
+const MM_OUT = ['USB MIDI out', 'DIN MIDI out', 'SMPTE / LTC out', 'Network MIDI out', 'Art-Net timecode out'];
+const MM_SELF = [0, 1, -1, 6, 7];       // the input each output can't take (its own port)
+const mmOutCount = out => Math.min(MM_OUT.length, (out && out.length) || 4);
+const mmHasArt = out => mmOutCount(out) > 4;
 const MM_RATES = ['24 fps', '25 fps', '29.97 drop-frame', '29.97 non-drop', '30 fps'];
 
 let mmTimer = null, mmClockTimer = null;
@@ -1904,10 +1909,12 @@ function masterMidiLiveHtml(s) {
     mmFlowRow(im & 2, 'DIN MIDI In', (s.din_rx || 0) + ' bytes') +
     mmFlowRow(im & 4, 'Timecode In (LTC)', (im & 4) ? 'receiving' : 'no signal') +
     mmFlowRow(im & 8, 'Network MIDI In', peers.length ? peers.length + ' connected' : 'nobody connected') +
+    (mmHasArt(out) ? mmFlowRow(im & 16, 'Art-Net In', (im & 16) ? 'from ' + esc(s.art_from || '') : 'no sender') : '') +
     mmFlowRow(intUsed, 'Internal clock', intUsed ? 'running' : 'not used');
   const det = [s.usb_mounted ? 'computer connected' : 'no computer', '', s.ltc_run ? 'sending' : 'idle',
-               peers.length ? peers.length + ' connected' : 'nobody connected'];
-  const outs = MM_OUT.map((nm, o) => {
+               peers.length ? peers.length + ' connected' : 'nobody connected',
+               out[4] === 4 || out[4] == null ? 'off' : (s.art_tx || 0) + ' frames'];
+  const outs = MM_OUT.slice(0, mmOutCount(out)).map((nm, o) => {
     const src = out[o];
     const from = (src === 4 || src == null || MM_SRC_SHORT[src] == null)
       ? ' <span class="dim">· silent</span>'
@@ -1941,7 +1948,8 @@ function masterMidiLiveHtml(s) {
 
 function masterMidiRoutingHtml(routing, tc) {
   const out = routing.out || [4, 0, 0, 0];
-  const srcOpts = (o, cur) => MM_SRC_ORDER.filter(sv => MM_SELF[o] !== sv)
+  const art = mmHasArt(out);
+  const srcOpts = (o, cur) => MM_SRC_ORDER.filter(sv => MM_SELF[o] !== sv && (art || sv !== 7))
     .map(sv => `<option value="${sv}"${sv === cur ? ' selected' : ''}>${esc(MM_SRC[sv])}</option>`).join('') +
     `<option value="4"${cur === 4 ? ' selected' : ''}>None</option>`;
   const sel = (id, opts) => `<select id="${id}" style="${QN_SEL_STYLE};min-width:200px">${opts}</select>`;
@@ -1950,15 +1958,26 @@ function masterMidiRoutingHtml(routing, tc) {
       <div class="section-section-title">Routing</div>
       <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Each output takes one source. An output can't take its own input.</p>
       <div class="status-grid">
-        ${MM_OUT.map((nm, o) => `<div class="sk">${esc(nm)}</div><div class="sv">${sel('mmOut' + o, srcOpts(o, out[o]))}</div>`).join('')}
+        ${MM_OUT.slice(0, mmOutCount(out)).map((nm, o) => `<div class="sk">${esc(nm)}</div><div class="sv">${sel('mmOut' + o, srcOpts(o, out[o]))}</div>`).join('')}
       </div>
+      ${tc.art_dest !== undefined ? `
+      <div class="section-section-title" style="margin-top:16px">Art-Net timecode</div>
+      <div class="status-grid">
+        <div class="sk">Send to</div><div class="sv"><input type="text" id="mmArtDest" value="${esc(tc.art_dest)}" placeholder="Everyone on this network" style="${QN_SEL_STYLE};width:200px"></div>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:6px">Leave empty to send to every device on this network, or enter one device's address.
+        <b>A console set to follow Art-Net timecode will run its show from this</b> — check what is listening before routing a source to <i>Art-Net timecode out</i>.</p>` : ''}
       <div class="section-section-title" style="margin-top:16px">Internal clock</div>
       <div class="status-grid">
         <div class="sk">Frame rate</div><div class="sv">${sel('mmRate', MM_RATES.map((r, i) => `<option value="${i}"${i === tc.rate ? ' selected' : ''}>${r}</option>`).join(''))}</div>
         <div class="sk">Start at</div><div class="sv"><input type="text" id="mmStart" value="${esc(tc.start || '01:00:00:00')}" style="${QN_SEL_STYLE};width:130px"></div>
         <div class="sk">Display follows</div><div class="sv">${sel('mmMode',
-          [[5, 'Auto (whichever input is live)'], [0, 'USB Input'], [1, 'DIN Input'], [6, 'Network Input'], [2, 'SMPTE Input'], [3, 'Internal Clock']]
+          [[5, 'Auto (whichever input is live)'], [0, 'USB Input'], [1, 'DIN Input'], [6, 'Network Input'], [7, 'Art-Net Input'], [2, 'SMPTE Input'], [3, 'Internal Clock']]
+            .filter(([v]) => art || v !== 7)
             .map(([v, t]) => `<option value="${v}"${v === tc.mode ? ' selected' : ''}>${t}</option>`).join(''))}</div>
+        ${tc.hold_ms !== undefined ? `<div class="sk">Hold through LTC dropouts</div><div class="sv">${sel('mmHold',
+          [[0, 'Off'], [500, '0.5 s'], [1000, '1 s'], [2000, '2 s'], [5000, '5 s']]
+            .map(([v, t]) => `<option value="${v}"${v === tc.hold_ms ? ' selected' : ''}>${t}</option>`).join(''))}</div>` : ''}
       </div>
       <div class="btn-row" style="margin-top:10px"><button class="btn btn-primary btn-small" id="mmSaveBtn">Save routing</button></div>
     </div>`;
@@ -2070,10 +2089,20 @@ async function renderMasterMidiDetail(n) {
     if (currentPage !== 'node-detail' || detailNode !== n) return;
     $('mmRouting').innerHTML = masterMidiRoutingHtml(routing, tc);
     $('mmSaveBtn').addEventListener('click', async () => {
+      // Timecode first: the node refuses a bad Art-Net address (400), and the
+      // routing must not switch Art-Net out on toward an address that didn't save.
+      const body = { rate: parseInt($('mmRate').value, 10), start: $('mmStart').value.trim(),
+                     mode: parseInt($('mmMode').value, 10) };
+      if ($('mmArtDest')) body.art_dest = $('mmArtDest').value.trim();
+      if ($('mmHold')) body.hold_ms = parseInt($('mmHold').value, 10);
       try {
-        await nodeApi('POST', n.ip, '/api/routing', { out: MM_OUT.map((_, o) => parseInt($('mmOut' + o).value, 10)) });
-        await nodeApi('POST', n.ip, '/api/timecode', { rate: parseInt($('mmRate').value, 10), start: $('mmStart').value.trim(),
-                                                       mode: parseInt($('mmMode').value, 10) });
+        const r = await fetch(`http://${n.ip}/api/timecode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!r.ok) {
+          let why = 'Save failed';
+          try { why = (await r.json()).error || why; } catch (_) {}
+          toast(why, 'err'); return;
+        }
+        await nodeApi('POST', n.ip, '/api/routing', { out: MM_OUT.slice(0, mmOutCount(routing.out)).map((_, o) => parseInt($('mmOut' + o).value, 10)) });
         toast('Routing saved');
       } catch (e) { toast('Save failed', 'err'); }
     });

@@ -3,7 +3,12 @@
 
 #include <EthernetLarge.h>
 
-#define PIX_MAX_BUFFER_SIZE 2040
+// dualETH sizes these for two 680-pixel outputs. masterETH drives one status
+// LED through doPixel() with its own 3-byte buffer and never touches these, but
+// at 2 x 2040 they were 4 KB of the ESP8266's RAM - and with v2.3 that left
+// ~4.3 KB of heap, too little for the OTA flash buffer (4 KB) or the web
+// server's page buffer, so OTA failed and the page never loaded (2026-10-14).
+#define PIX_MAX_BUFFER_SIZE 6
 
 #define PIX_LATCH_TIME 25    
 

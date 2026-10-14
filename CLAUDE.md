@@ -233,8 +233,22 @@ the `…7F:1D` prototype above), which was on v1.2.
   but no LittleFS code exists in `nodeTags.cpp`. Everything needed (settings, leases, 32×94 cache,
   32×32 tags) is ~4.5 KB against a 4 KB EEPROM window, so this needs a layout decision (smaller cache
   entries, fewer entries, or tags really in LittleFS) — not done.
-- ⚠️ **Free heap is ~4.3 KB on v2.3** (the self-test reports it as Low): static RAM went 65.9 KB (v2.2,
-  80.5 %) → 68.6 KB (v2.3 WIP, 83.8 %). Worth finding before release.
+- **Free heap was ~4.3 KB on v2.3 — and that broke the page and OTA** (found and fixed 2026-10-14). Two things
+  need a 4 KB heap block: the web server's `send_P()` buffer (`new uint8_t[4096]`; when it fails the body is
+  silently skipped — headers, then nothing, the connection left hanging) and `Update`'s flash-sector buffer (so
+  `POST /upload` failed and the unit rebooted on its old image every time; its reply body was lost the same way).
+  The unit ran like that from the 2026-10-13 USB flash until this fix, which also needed USB. Fixes:
+  `PIX_MAX_BUFFER_SIZE` 2040 → 6 (`ethWs2812Driver.h` — dualETH's two 680-pixel buffers, unused here; the status
+  LED goes through `doPixel()` with its own 3 bytes): static RAM 68.6 → 64.6 KB, **heap 8.4 KB, largest block
+  8.3 KB**. And `serveIndex()` streams the 248 KB page through a 512-byte **stack** buffer with `yield()`, so the
+  page needs no heap at all. Verified: page served whole (byte-identical, 0.7 s), and an OTA over `/upload` →
+  `{"success":1}`. **After any change that grows static RAM, check `maxFreeBlock` > ~5 KB and do one OTA** —
+  a build that can't OTA can only be recovered over USB.
+- **masterMIDI Art-Net + holdover (2026-10-14):** the detail page shows Art-Net In / Art-Net timecode out in the
+  flow and routing, the Art-Net *Send to* (`art_dest`) and *Hold through LTC dropouts* (`hold_ms`) settings.
+  It shows only as many outputs as the node's `/api/routing` returns and the extra settings only when its
+  `/api/timecode` has them, so a masterMIDI on older firmware still gets a correct page. Save posts
+  `/api/timecode` first (the node 400s a bad address) and only then the routing.
 
 ## DMX-Workshop features (v2.2)
 
