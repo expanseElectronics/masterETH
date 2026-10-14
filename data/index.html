@@ -4869,7 +4869,9 @@ function pushFirmware(ip, blob, onProgress) {
     x.open('POST', 'http://' + ip + '/api/update');
     x.timeout = 300000;   // masterMIDI takes ~80 s for 1 MB over Ethernet
     x.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
-    x.onload = () => x.status === 200 ? resolve(x.responseText || 'ok') : reject(new Error('HTTP ' + x.status + ' ' + x.responseText));
+    // Nodes answer JSON ({ok, result} or {ok:false, error}); show the words, not the JSON.
+    const said = () => { try { const j = JSON.parse(x.responseText); return j.result || j.error || j.message || ''; } catch (_) { return x.responseText; } };
+    x.onload = () => x.status === 200 ? resolve(said() || 'ok') : reject(new Error(said() || ('HTTP ' + x.status)));
     x.onerror = () => reject(new Error('network error'));
     x.ontimeout = () => reject(new Error('timeout'));
     x.send(blob);

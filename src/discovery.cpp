@@ -383,6 +383,12 @@ const char* artnetMonitorJson() {
 }
 
 void discoveryTick() {
+  // Not begun = firmware-update mode (setup() skips discoveryBegin() there).
+  // Without this the first ArtPoll went out through a UDP socket that was never
+  // opened and blocked loop() for good: the web server never ran, so the
+  // /upload that update mode exists for could not arrive, and the unit sat
+  // dark on the network until it was reflashed over USB.
+  if (!g_listening) return;
   uint32_t now = millis();
 
   if (g_immediatePollRequested || now >= g_nextPollMs) {

@@ -244,6 +244,13 @@ the `…7F:1D` prototype above), which was on v1.2.
   page needs no heap at all. Verified: page served whole (byte-identical, 0.7 s), and an OTA over `/upload` →
   `{"success":1}`. **After any change that grows static RAM, check `maxFreeBlock` > ~5 KB and do one OTA** —
   a build that can't OTA can only be recovered over USB.
+- **Update mode hung masterETH until a USB reflash** (found and fixed 2026-10-15). `POST /api/firmware/prepare` sets
+  `doFirmwareUpdate` and restarts; that boot skips `discoveryBegin()`, but `loop()` still called `discoveryTick()`,
+  whose first ArtPoll went out through a UDP socket that was never opened and blocked `loop()` for good — the web
+  server never ran, so `/upload` couldn't arrive (port 80 refused). `discoveryTick()` now returns unless discovery
+  began, and update mode clears its flag in EEPROM at once (it used to wait for loop()'s 6 s save). The OTA test above
+  was a direct `/upload`; the web page's own route goes through prepare, and that is what broke. Verified: prepare →
+  update mode answering in 3 s → `/upload` → normal boot with discovery, twice. **Test an OTA through prepare.**
 - **masterMIDI Art-Net + holdover (2026-10-14):** the detail page shows Art-Net In / Art-Net timecode out in the
   flow and routing, the Art-Net *Send to* (`art_dest`) and *Hold through LTC dropouts* (`hold_ms`) settings.
   It shows only as many outputs as the node's `/api/routing` returns and the extra settings only when its

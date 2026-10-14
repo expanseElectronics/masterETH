@@ -122,7 +122,10 @@ void setup(void) {
       discoveryAnnounceTakeover();
     }
   } else {
+    // Update mode is for this boot only. Saved now, so a failed or abandoned
+    // upload can't leave the flag set and trap every later boot in this mode.
     deviceSettings.doFirmwareUpdate = false;
+    eepromSave();
   }
 
   statusLeds.endBoot();
