@@ -418,6 +418,43 @@ void apiGetArtnetMonitor() {
   apiTransport->send(200, "application/json", artnetMonitorJson());
 }
 
+// LAN port scanner (src/scanner.cpp). Query args: ports=80,443,22 (up to 6),
+// start / end = last-octet range (default 1..254). First port doubles as the
+// host-discovery probe — a host silent on it is treated as down.
+void apiPostScan() {
+  uint16_t ports[6];
+  uint8_t n = 0;
+  if (apiTransport->hasArg("ports")) {
+    String s = apiTransport->arg("ports");
+    int i = 0;
+    while (i < (int)s.length() && n < 6) {
+      int comma = s.indexOf(',', i);
+      if (comma < 0) comma = s.length();
+      int p = s.substring(i, comma).toInt();
+      if (p > 0 && p <= 65535) ports[n++] = (uint16_t)p;
+      i = comma + 1;
+    }
+  }
+  if (n == 0) { ports[0] = 80; ports[1] = 443; ports[2] = 22; n = 3; }  // defaults
+  auto argInt = [](const char* k, int def) {
+    return apiTransport->hasArg(k) ? apiTransport->arg(k).toInt() : def;
+  };
+  int start = constrain(argInt("start", 1),   1, 254);
+  int end   = constrain(argInt("end",   254), 1, 254);
+  bool ok = scanStart((uint8_t)start, (uint8_t)end, ports, n);
+  apiTransport->send(ok ? 202 : 409, "application/json",
+                     ok ? "{\"started\":true}" : "{\"error\":\"scan already running\"}");
+}
+
+void apiGetScan() {
+  apiTransport->send(200, "application/json", scannerJson());
+}
+
+void apiPostScanStop() {
+  scanStop();
+  apiTransport->send(200, "application/json", "{\"stopped\":true}");
+}
+
 // ---------------------------------------------------------------------------
 // MAC parsing for /api/tags. Accepts canonical "AA:BB:CC:DD:EE:FF". Returns
 // true on a clean parse; out[6] populated.
@@ -503,6 +540,9 @@ const ApiRoute API_ROUTES[] = {
   { "/api/nodes/locate",       true,  apiPostNodesLocate },
   { "/api/artdmx",             true,  apiPostArtDmx },
   { "/api/artnet-monitor",     false, apiGetArtnetMonitor },
+  { "/api/scan",               true,  apiPostScan },
+  { "/api/scan",               false, apiGetScan },
+  { "/api/scan/stop",          true,  apiPostScanStop },
   { "/api/tags",               false, apiGetTags },
   { "/api/tags",               true,  apiPostTags },
   { "/api/network",            false, apiGetNetwork },
@@ -512,6 +552,7 @@ const ApiRoute API_ROUTES[] = {
   { "/api/locate",             true,  apiPostLocate },
   { "/api/firmware/prepare",   true,  apiPostFirmwarePrepare },
   { "/api/onboarding-done",    true,  apiPostOnboardingDone },
+  { "/api/selftest",           true,  apiPostSelfTest },
 };
 const size_t API_ROUTE_COUNT = sizeof(API_ROUTES) / sizeof(API_ROUTES[0]);
 

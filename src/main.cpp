@@ -88,9 +88,11 @@ void setup(void) {
   //   512..871    DHCP-server lease blob
   //   872         Node registry cache version byte (v3 = 94-byte entries)
   //   873..3880   Node registry cache (32 nodes × 94 bytes)
-  //   3881..4095  Reserved
-  // Legacy node-tag store at 1024..2055 is deprecated in favor of
-  // LittleFS-backed tag persistence (nodeTags.cpp).
+  //   3881..4094  Reserved
+  //   4095        Onboarding-done flag (store.h)
+  // ⚠ nodeTags.cpp still persists tags to EEPROM at 1024..2055 - INSIDE the
+  // node cache above (an earlier note here said tags had moved to LittleFS;
+  // they haven't). Saving either one can overwrite the other. Open issue.
   EEPROM.begin(4096);
   LittleFS.begin();
 
@@ -140,6 +142,7 @@ void loop(void) {
 
   serialConfigTick();  // USB config link — works with no network at all
   discoveryTick();
+  scannerTick();      // LAN port scanner — no-op unless a scan is running
   dhcpServerTick();   // no-op when fallback server isn't active
 
   statusLeds.tick();

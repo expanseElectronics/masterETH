@@ -200,6 +200,42 @@ What's wired up (node detail page = tabbed: Identity / Configuration / **RDM** /
 
 Advanced Mode (quadETH's own UI gates Display/Self-Test behind it) is **not** replicated — masterETH operators are advanced, so these surfaces always show. Self-Test (`/api/selftest`) is intentionally not surfaced.
 
+## masterMIDI support + Self-Test page (2026-10-13, uncommitted — on top of the v2.3 WIP)
+
+Built on the v2.3 working tree and **left uncommitted with it**: `selfTest.cpp` uses the WIP's
+`apiTransport` / `API_ROUTES`, so it can't be committed apart from the WIP. Flashed over USB to the
+unit (a different board from
+the `…7F:1D` prototype above), which was on v1.2.
+
+- **masterMIDI** (`deviceType` `masterMIDI-HALO`, timecode hub — no DMX ports) is found like any node:
+  it answers ArtPoll, and ships CORS. `nodeRegistry.cpp` marks it `Compatible` (the dualETH v7.4
+  version test would have called its `v0.1.0` read-only). SPA: `isMasterMidiNode(n)`; it gets its own
+  detail page like quadNET (`renderMasterMidiDetail` — live clock extrapolated between 500 ms polls,
+  signal flow, Network MIDI sessions, a routing/internal-clock editor over `/api/routing` +
+  `/api/timecode`, Locate, Reboot, and its self-test incl. the confirm-gated factory test), a
+  *Timecode* tag and a clock/source strip on the Nodes list (`masterMidiStrip`), and is kept out of
+  the universe map, bulk universe assignment and port backup. Its `nodeName` is ≤17 chars
+  (`masterMIDI-696d`) because the registry keeps 17.
+- **Self-Test page** (sidebar, `renderSelfTestPage`): masterETH's own `POST /api/selftest`
+  (`src/selfTest.cpp` — cable, address, address server, discovery, OTA headroom, memory, last restart;
+  cached state only, never the W5500 from a handler) and **Check all devices**, the quick self-test of
+  every online quadETH and masterMIDI (same `{tests:[{name,pass,skip,detail,tech}]}` shape). Results are
+  **customer-facing** — plain names and what-to-do; engineering detail in `tech`. This also covers the
+  queued "surface quadETH `/api/selftest`" item.
+- **Wizard aligned with masterMIDI's:** welcome copy names the whole fleet, address fields hide while
+  DHCP is ticked, Back on the last step, and a DHCP restart reloads when `/api/identify` answers
+  instead of after a fixed 8 s.
+- **Onboarding flag moved 512 → 4095** (`store.h`): 512 was byte 0 of the DHCP-lease blob's "DHCP"
+  magic, so each one broke the other (the open v1.2 bug below). A unit updated from the old layout
+  shows the wizard once more.
+- ⚠️ **Still open — node tags overlap the node cache.** `nodeTags.cpp` writes 1024..2055, inside the
+  node-registry cache (873..3880); `main.cpp`'s memory-map comment claimed tags had moved to LittleFS,
+  but no LittleFS code exists in `nodeTags.cpp`. Everything needed (settings, leases, 32×94 cache,
+  32×32 tags) is ~4.5 KB against a 4 KB EEPROM window, so this needs a layout decision (smaller cache
+  entries, fewer entries, or tags really in LittleFS) — not done.
+- ⚠️ **Free heap is ~4.3 KB on v2.3** (the self-test reports it as Low): static RAM went 65.9 KB (v2.2,
+  80.5 %) → 68.6 KB (v2.3 WIP, 83.8 %). Worth finding before release.
+
 ## DMX-Workshop features (v2.2)
 
 masterETH-side surfaces (sidebar pages) that make it a "hardware DMX-Workshop". The RDM/Scenes pieces are *node-side* (per "quadETH support" above); the two below need masterETH **firmware** (UDP):

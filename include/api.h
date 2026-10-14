@@ -72,6 +72,9 @@ void apiPostNodesRefresh();
 void apiPostNodesLocate();   // POST /api/nodes/locate?ip=… (LED pulse)
 void apiPostArtDmx();        // POST /api/artdmx (DMX test generator)
 void apiGetArtnetMonitor();  // GET /api/artnet-monitor (live universe activity)
+void apiPostScan();          // POST /api/scan?ports=&start=&end= (start LAN scan)
+void apiGetScan();           // GET  /api/scan (progress + results)
+void apiPostScanStop();      // POST /api/scan/stop
 void apiGetTags();
 void apiPostTags();
 void apiGetNetwork();
@@ -91,6 +94,7 @@ void apiPostReboot();
 void apiPostLocate();           // POST /api/locate (flash masterETH's own LED)
 void apiPostFirmwarePrepare();
 void apiPostOnboardingDone();
+void apiPostSelfTest();            // selfTest.cpp — POST /api/selftest
 
 void serveIndex();
 

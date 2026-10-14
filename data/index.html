@@ -189,6 +189,14 @@ nav a.active {
 .dot.ok   { background: var(--ok);   box-shadow: 0 0 8px rgba(34,204,119,0.5); }
 .dot.warn { background: var(--warn); box-shadow: 0 0 8px rgba(224,120,0,0.5); }
 .dot.err  { background: var(--err);  box-shadow: 0 0 8px rgba(224,51,51,0.5); }
+.dot.info { background: #3a50f9;     box-shadow: 0 0 8px rgba(58,80,249,0.5); }  /* uplink — matches quadNET LED */
+/* Switches tab — no bulk-select checkbox, so a 3-column grid (dot · body · arrow)
+   instead of the Nodes list's 5-column grid. Two-class selector so it beats
+   .node-row regardless of source order. */
+.node-row.switch-row { grid-template-columns: 14px 1fr auto; }
+.sw-strip { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+.sw-port  { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+.sw-port .pn { color: var(--text); }
 
 .led-cell {
   display: inline-flex; align-items: center; gap: 10px;
@@ -764,11 +772,13 @@ input[type=range] { accent-color: var(--accent); width: 220px; vertical-align: m
       </div>
       <nav id="nav">
         <a href="#" data-page="nodes"    class="active">Nodes</a>
+        <a href="#" data-page="switches">Switches</a>
         <a href="#" data-page="universes">Universes</a>
         <a href="#" data-page="test">DMX Test</a>
         <a href="#" data-page="monitor">Monitor</a>
-        <a href="#" data-page="network">IP &amp; Network</a>
+        <a href="#" data-page="network">Network Tools</a>
         <a href="#" data-page="system">System</a>
+        <a href="#" data-page="selftest">Self-Test</a>
         <a href="#" data-page="firmware">Firmware</a>
         <a href="#" id="rebootLink">Reboot</a>
       </nav>
@@ -816,6 +826,14 @@ let oledTimer = null;   // /api/oled poll on the quadETH Display tab
 // the registry (reliable; set on identify).
 function isQuadNode(n) { return /^quadETH/i.test((n && n.deviceType) || ''); }
 function isDualNode(n) { return /^dualETH/i.test((n && n.deviceType) || ''); }
+// quadNET is the 4-port switch (deviceType "quadNET-HALO"), NOT the quadETH DMX
+// node. It's a read-only citizen of the fleet: no Art-Net ports, no /api/status,
+// no cross-origin writes — just its native /api (link/DHCP/leases). Detected and
+// rendered entirely separately from the DMX nodes.
+function isQuadNetNode(n) { return /^quadNET/i.test((n && n.deviceType) || ''); }
+// masterMIDI is the timecode hub (deviceType "masterMIDI-HALO"): no DMX ports,
+// universes, RDM or scenes — it has its own detail page and Nodes-list strip.
+function isMasterMidiNode(n) { return /^masterMIDI/i.test((n && n.deviceType) || ''); }
 function portLettersFor(n) { return isQuadNode(n) ? ['A', 'B', 'C', 'D'] : ['A', 'B']; }
 // Display label for a port. The quadETH labels its ports by faceplate NUMBER
 // (1–4) on its own UI/OLED; the A–D letters in its API are stable identifiers
@@ -1178,6 +1196,7 @@ function liveStrip(n) {
   if (n.compat !== 'compatible' || !n.online) return '';
   const cache = nodeStatusCache.get(n.mac);
   if (!cache || !cache.data) return '';
+  if (isMasterMidiNode(n)) return masterMidiStrip(cache.data);
   const act = portActivityFromStatus(cache.data);
   return `
     <div class="live-strip">
@@ -1218,12 +1237,15 @@ async function renderNodes() {
   const wasFocused = document.activeElement === prevSearch;
   if (prevSearch) searchQuery = prevSearch.value;
 
+  // Switches (quadNET) have their own Switches tab — keep the Nodes list to DMX nodes.
   cachedNodes = (d.nodes || []).filter(n =>
-    n.compat === 'compatible' || n.compat === 'readonly');
+    (n.compat === 'compatible' || n.compat === 'readonly') && !isQuadNetNode(n));
 
   const total    = cachedNodes.length;
   const online   = cachedNodes.filter(n => n.online).length;
-  const readonly = cachedNodes.filter(n => n.compat === 'readonly').length;
+  // quadNET is 'readonly' by compat (fw v0.x, no CORS-writes) but it isn't a
+  // DMX node awaiting a v7.4 flash — exclude it from the "needs v7.4" tally.
+  const readonly = cachedNodes.filter(n => n.compat === 'readonly' && !isQuadNetNode(n)).length;
 
   // Sort: compatible+online → compatible+offline → readonly.
   const rank = n => {
@@ -1265,6 +1287,7 @@ async function renderNodes() {
     html += '<div class="node-list">' + visible.map(n => {
       let dotClass = '';
       if (n.compat === 'compatible') dotClass = n.online ? 'ok' : 'warn';
+      else if (isQuadNetNode(n)) dotClass = n.online ? 'ok' : 'warn';
       else if (n.compat === 'readonly') dotClass = 'warn';
       const tag = getTag(n.mac);
       const displayName = tag || n.nodeName;
@@ -1278,7 +1301,10 @@ async function renderNodes() {
             displayName
               ? esc(displayName)
               : '<span class="unidentified">' + esc(n.ip) + '</span>'
-          }${tag && n.nodeName ? ' <span class="real-name">(' + esc(n.nodeName) + ')</span>' : ''}${n.compat !== 'compatible' ? ' ' + compatTag(n.compat) : ''}</div>
+          }${tag && n.nodeName ? ' <span class="real-name">(' + esc(n.nodeName) + ')</span>' : ''}${
+            isQuadNetNode(n) ? ' <span class="tag">Switch</span>'
+              : isMasterMidiNode(n) ? ' <span class="tag">Timecode</span>'
+              : (n.compat !== 'compatible' ? ' ' + compatTag(n.compat) : '')}</div>
           <div class="meta">
             <span class="ip">${esc(n.ip)}</span>
             ${n.deviceType ? '<span>' + esc(n.deviceType) + '</span>' : ''}
@@ -1398,8 +1424,9 @@ function wireBulkBar() {
   });
 
   $('bulkUniversesBtn')?.addEventListener('click', async () => {
-    const targets = selectedNodes().filter(n => n.compat === 'compatible');
-    if (!targets.length) { toast('No editable (compatible) nodes selected', 'err'); return; }
+    // DMX nodes only — a masterMIDI has no universes to assign.
+    const targets = selectedNodes().filter(n => n.compat === 'compatible' && !isMasterMidiNode(n));
+    if (!targets.length) { toast('No editable DMX nodes selected', 'err'); return; }
     const startNet      = parseInt(prompt('Starting Net (0–127):', '0'), 10);
     if (Number.isNaN(startNet)) return;
     const startSubnet   = parseInt(prompt('Starting Subnet (0–15):', '0'), 10);
@@ -1455,6 +1482,633 @@ function wireBulkBar() {
 
 // ── Node detail ──────────────────────────────────────────────────────────────
 
+// ── Switches tab — fleet view of quadNET switches ────────────────────────────
+
+// Compact live port strip for a switch's /api snapshot. Colours mirror the
+// quadNET's own LEDs: uplink blue, 100M green, 10M orange, no-link/disabled dim,
+// dead PHY red.
+function swPortStrip(s) {
+  return '<div class="sw-strip">' + (s.p || []).map(p => {
+    let c = '', v;
+    if (!p.en)      { c = '';     v = 'off'; }
+    else if (!p.e)  { c = 'err';  v = 'no phy'; }
+    else if (!p.u)  { c = '';     v = '—'; }
+    else if (p.l)   { c = 'info'; v = 'uplink'; }
+    else            { c = p.s === 100 ? 'ok' : 'warn'; v = p.s + 'M'; }
+    return `<span class="sw-port"><span class="dot ${c}"></span><span class="pn">${esc(p.n)}</span><span>${esc(v)}</span></span>`;
+  }).join('') + '</div>';
+}
+
+async function renderSwitches() {
+  if (currentPage !== 'switches') return;
+  let d;
+  try { d = await api('GET', '/api/nodes'); }
+  catch (e) {
+    if (currentPage !== 'switches') return;
+    content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>';
+    return;
+  }
+  if (currentPage !== 'switches') return;
+
+  const switches = (d.nodes || []).filter(isQuadNetNode)
+    .sort((a, b) => (b.online - a.online) || a.ip.localeCompare(b.ip));
+  const online = switches.filter(s => s.online).length;
+
+  let html = `
+    <div class="section-header">
+      <div class="section-title">Switches</div>
+      <div class="heartbeat" id="hb"><span class="hb-dot"></span><span>Live</span></div>
+    </div>
+    <div class="node-summary">
+      <span><strong>${online}</strong> online / <strong>${switches.length}</strong> total</span>
+      <span style="margin-left:auto"><button class="btn-secondary btn-small" id="refreshBtn">Refresh</button></span>
+    </div>`;
+
+  if (!switches.length) {
+    html += `<div class="empty-state">
+      No switches discovered yet. quadNET switches announce themselves over Art-Net —
+      make sure one is powered and on this broadcast domain.
+    </div>`;
+  } else {
+    html += '<div class="node-list">' + switches.map(n => {
+      const tag = getTag(n.mac);
+      const name = tag || n.nodeName || n.ip;
+      return `
+      <div class="node-row switch-row ${n.online ? '' : 'offline'}" data-ip="${esc(n.ip)}" data-mac="${esc(n.mac)}" tabindex="0">
+        <span class="dot ${n.online ? 'ok' : 'warn'}"></span>
+        <div class="row-body">
+          <div class="name">${esc(name)}${tag && n.nodeName ? ` <span class="real-name">(${esc(n.nodeName)})</span>` : ''} <span class="tag">Switch</span></div>
+          <div class="meta">
+            <span class="ip">${esc(n.ip)}</span>
+            ${n.firmwareVersion ? `<span>${esc(n.firmwareVersion)}</span>` : ''}
+            <span>${n.online ? 'online' : 'offline · seen ' + formatTimeSince(n.lastSeenSecondsAgo) + ' ago'}</span>
+          </div>
+          <div id="swports-${esc(n.mac)}">${n.online ? '<span class="hint">reading ports…</span>' : ''}</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>`;
+    }).join('') + '</div>';
+  }
+  content.innerHTML = html;
+
+  content.querySelectorAll('.node-row').forEach(row => {
+    const go = () => { location.hash = '#node/' + row.dataset.ip; };
+    row.addEventListener('click', go);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  });
+  $('refreshBtn')?.addEventListener('click', renderSwitches);
+
+  // Pull each online switch's live port strip cross-origin (few switches, direct).
+  switches.filter(s => s.online).forEach(async n => {
+    let s;
+    try { s = await nodeApi('GET', n.ip, '/api'); } catch (e) { return; }
+    if (currentPage !== 'switches') return;
+    const el = document.getElementById('swports-' + n.mac);
+    if (el && s && Array.isArray(s.p)) el.innerHTML = swPortStrip(s);
+  });
+}
+
+// ── quadNET (switch) detail — read-only, reads the node's native /api ─────────
+let quadNetTimer = null;
+function stopQuadNetPoll() { if (quadNetTimer) { clearInterval(quadNetTimer); quadNetTimer = null; } }
+
+function fmtDur(s) {
+  s = Math.max(0, s | 0);
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return (d ? d + 'd ' : '') + (h ? h + 'h ' : '') + m + 'm';
+}
+
+function isIpv4(s) {
+  const o = String(s).split('.');
+  return o.length === 4 && o.every(x => /^\d{1,3}$/.test(x) && +x <= 255);
+}
+
+// Render the live switch block from a quadNET /api snapshot. Field shape:
+//   { up, ip, sv, p:[{n,e,u,s,d,l,en}], ev:[{p,u,t}], lz:[{m,i,t}] }
+// e=PHY present, u=link up, s=speed(100/10/0), d=full-duplex, l=uplink, en=enabled.
+const QN_SPD = ['Auto', '100 Full', '100 Half', '10 Full', '10 Half'];
+const QN_SEL_STYLE = 'background:var(--surface2);border:1px solid var(--border2);color:var(--text);font:11px var(--mono);border-radius:3px;padding:4px 6px';
+
+function quadNetLiveHtml(d) {
+  // Diagnostics computed from the node's own data (zero device cost): "stable
+  // for" = uptime − most-recent link event for the port; flap count = that
+  // port's entries in the last-8 event ring. ev[] is newest-first.
+  const lastChange = {}, flaps = {};
+  (d.ev || []).forEach(e => {
+    if (lastChange[e.p] === undefined) lastChange[e.p] = e.t;
+    flaps[e.p] = (flaps[e.p] || 0) + 1;
+  });
+  // Each row carries data-attrs so single delegated handlers on #quadnetLive
+  // (click + change) survive the 2s innerHTML refresh. Port index i maps directly
+  // to the node's /p and /spd routes (same PORTS[] order as the /api p[] array).
+  const portRow = (p, i) => {
+    let dot = '', state;
+    if (!p.en)      { dot = '';    state = 'Disabled'; }
+    else if (!p.e)  { dot = 'err'; state = 'PHY not responding'; }
+    else if (!p.u)  { dot = '';    state = 'No link'; }
+    else {
+      dot = p.s === 100 ? 'ok' : 'warn';
+      state = p.s + 'M ' + (p.d ? 'full' : 'half') + ' duplex';
+    }
+    const diag = p.u
+      ? `stable ${fmtDur(lastChange[p.n] !== undefined ? d.up - lastChange[p.n] : d.up)}${flaps[p.n] ? ` · ${flaps[p.n]} flap${flaps[p.n] > 1 ? 's' : ''}` : ''}`
+      : (flaps[p.n] ? `${flaps[p.n]} flap${flaps[p.n] > 1 ? 's' : ''}` : '');
+    const forced = (p.sp || 0) !== 0;
+    const target = p.en ? 0 : 1;
+    const speedCtl = p.l
+      ? '<span class="dim" style="font-size:11px">auto (locked)</span>'
+      : `<select data-qn-spd="${i}" style="${QN_SEL_STYLE}">${QN_SPD.map((nm, v) =>
+          `<option value="${v}"${v === (p.sp || 0) ? ' selected' : ''}>${nm}</option>`).join('')}</select>`;
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <span class="dot ${dot}"></span>
+        <div style="min-width:150px">
+          <span style="font-family:var(--mono)">${esc(p.n)}</span>
+          ${p.l ? '<span class="tag" style="margin-left:6px;font-size:10px">uplink</span>' : ''}
+          ${forced ? `<span class="tag warn" style="margin-left:6px;font-size:10px">forced ${esc(QN_SPD[p.sp])}</span>` : ''}
+          <div style="font-size:12px;color:var(--text-dim)">${esc(state)}${diag ? ` · <span style="color:var(--text-dim)">${esc(diag)}</span>` : ''}</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          ${speedCtl}
+          ${p.l
+            ? '<span style="font-size:11px;color:var(--text-dim);min-width:64px;text-align:right">always on</span>'
+            : `<button class="btn btn-small ${p.en ? 'btn-danger' : 'btn-secondary'}" style="min-width:64px"
+                  data-qn-port="${i}" data-qn-enable="${target}" data-qn-name="${esc(p.n)}">${p.en ? 'Disable' : 'Enable'}</button>`}
+        </div>
+      </div>`;
+  };
+  const netMode = d.st ? 'Static' : (d.sv ? 'DHCP server' : 'DHCP client');
+  const network = `
+    <div class="subsection">
+      <div class="section-section-title">Network</div>
+      <div class="status-grid">
+        <div class="sk">Mode</div>    <div class="sv">${esc(netMode)}</div>
+        <div class="sk">IP</div>      <div class="sv">${esc(d.ip)}</div>
+        <div class="sk">Subnet</div>  <div class="sv">${esc(d.mask || '—')}</div>
+        <div class="sk">Gateway</div> <div class="sv">${esc(d.gw || '—')}</div>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-small btn-secondary" data-qn-net="static">Set static IP…</button>
+        ${d.st ? '<button class="btn btn-small btn-secondary" data-qn-net="dhcp">Use DHCP</button>' : ''}
+      </div>
+    </div>`;
+  const events = (d.ev || []).length
+    ? `<table class="rdm-table"><thead><tr><th>Port</th><th>Event</th><th>At uptime</th></tr></thead><tbody>${
+        d.ev.map(e => `<tr><td style="font-family:var(--mono)">${esc(e.p)}</td>
+          <td style="color:${e.u ? 'var(--ok)' : 'var(--text-dim)'}">${e.u ? 'link up' : 'link down'}</td>
+          <td>${fmtDur(e.t)}</td></tr>`).join('')}</tbody></table>`
+    : '<p style="font-size:13px;color:var(--text-dim)">No link changes since boot.</p>';
+  const leases = (d.lz || []).map(l =>
+    `<tr><td style="font-family:var(--mono)">${esc(l.m)}</td><td>${esc(l.i)}</td><td>${fmtDur(l.t)}</td></tr>`).join('');
+  return `
+    <div class="subsection">
+      <div class="section-section-title">Switch</div>
+      <div class="status-grid">
+        <div class="sk">Uptime</div>    <div class="sv">${fmtDur(d.up)}</div>
+        <div class="sk">DHCP role</div> <div class="sv"><span class="dot ${d.sv ? 'ok' : ''}"></span>${d.sv ? 'Serving · 192.168.4.1 (pool .100–.105)' : 'Client · address from upstream'}</div>
+      </div>
+    </div>
+    ${network}
+    <div class="subsection">
+      <div class="section-section-title">Ports</div>
+      ${(d.p || []).map(portRow).join('')}
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">Recent link events</div>
+      ${events}
+    </div>
+    ${d.sv ? `
+    <div class="subsection">
+      <div class="section-section-title">DHCP leases</div>
+      ${leases
+        ? `<table class="rdm-table"><thead><tr><th>MAC</th><th>Address</th><th>Expires in</th></tr></thead><tbody>${leases}</tbody></table>`
+        : '<p style="font-size:13px;color:var(--text-dim)">No active leases.</p>'}
+    </div>` : ''}`;
+}
+
+async function renderQuadNetDetail(n) {
+  stopQuadNetPoll();
+  const tag = getTag(n.mac);
+  const headerName = tag || n.nodeName || n.ip;
+  const onlineSv  = n.online ? `<span class="dot ok"></span> Online` : `<span class="dot"></span> Offline · seen ${formatTimeSince(n.lastSeenSecondsAgo)} ago`;
+
+  content.innerHTML = `
+    <div class="section-header">
+      <div style="display:flex;align-items:baseline;flex-wrap:wrap">
+        <div class="section-title">${esc(headerName)}</div>
+        <span class="tag-editor">
+          ${tag
+            ? `<span class="current">${esc(tag)}</span><button class="pencil" id="tagEditBtn" title="Edit label">edit</button>`
+            : `<button class="pencil" id="tagEditBtn" title="Set a local label for this node">+ tag</button>`}
+        </span>
+        <span class="tag" style="margin-left:10px">Switch</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <a href="#nodes" class="btn btn-secondary btn-small">← Nodes</a>
+        <a class="btn btn-primary btn-small" href="http://${esc(n.ip)}/" target="_blank" rel="noreferrer">Open node UI →</a>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Identity</div>
+      <div class="status-grid">
+        <div class="sk">Status</div>          <div class="sv ${n.online ? 'ok' : 'dim'}">${onlineSv}</div>
+        <div class="sk">IP Address</div>      <div class="sv">${esc(n.ip)}</div>
+        <div class="sk">MAC Address</div>     <div class="sv">${esc(n.mac)}</div>
+        <div class="sk">Node Name</div>       <div class="sv">${esc(n.nodeName || 'quadNET')}${n.online ? ' <button class="pencil" id="qnNameBtn" title="Rename on the device">edit</button>' : ''}</div>
+        <div class="sk">Device Type</div>     <div class="sv">${esc(n.deviceType) || '<span class="dim">—</span>'}</div>
+        <div class="sk">Firmware</div>        <div class="sv">${esc(n.firmwareVersion) || '<span class="dim">—</span>'}</div>
+        <div class="sk">Serial Number</div>   <div class="sv">${esc(n.serialNumber) || '<span class="dim">—</span>'}</div>
+      </div>
+    </div>
+
+    ${n.online ? `
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="qnIdentifyBtn">Identify (flash LEDs 3s)</button>
+      <button class="btn btn-danger" id="qnRebootBtn">Reboot</button>
+    </div>` : ''}
+
+    <div id="quadnetLive">
+      ${n.online
+        ? '<div class="loading" style="padding:16px 0">Reading switch state…</div>'
+        : '<div class="subsection"><p style="font-size:13px;color:var(--text-dim)">Node is offline — live switch state unavailable.</p></div>'}
+    </div>
+
+    <p style="font-size:12px;color:var(--text-dim);margin-top:8px">
+      quadNET is a managed Ethernet switch (no Art-Net ports). Port enable/disable,
+      identify and reboot are driven here over its config API; DHCP is automatic
+      (it only serves when nothing else on the segment does).
+    </p>`;
+
+  $('tagEditBtn')?.addEventListener('click', async () => {
+    const current = getTag(n.mac);
+    const next = prompt('Label for this node (stored on masterETH).\nLeave blank to remove.', current);
+    if (next === null) return;
+    try { await setTag(n.mac, next.trim()); toast(next.trim() ? 'Tag saved' : 'Tag removed'); renderQuadNetDetail(n); }
+    catch (e) { /* setTag already toasted */ }
+  });
+
+  // Rename the node ON the device (distinct from the masterETH-side tag above).
+  // Writes to quadNET's /nm route; the masterETH registry reflects it on its next
+  // identify reprobe, so update the cached node optimistically for instant feedback.
+  $('qnNameBtn')?.addEventListener('click', async () => {
+    const cur = n.nodeName || 'quadNET';
+    const next = prompt('Node name — stored on the quadNET itself (max 17 chars).\n' +
+                        'Leave blank to reset to "quadNET".', cur);
+    if (next === null) return;
+    const name = next.trim().slice(0, 17);
+    try {
+      await nodeApi('GET', n.ip, '/nm?v=' + encodeURIComponent(name));
+      n.nodeName = name || 'quadNET';
+      toast(`Node renamed to “${n.nodeName}”`);
+      renderQuadNetDetail(n);
+    } catch (e) { toast('Rename failed', 'err'); }
+  });
+
+  if (!n.online) return;
+
+  const live = $('quadnetLive');
+  let lastQnData = null;   // latest /api snapshot, for the network editor's prefill
+  const refresh = async () => {
+    let d;
+    try { d = await nodeApi('GET', n.ip, '/api'); }
+    catch (e) { return; }   // transient — keep last-rendered state
+    if (currentPage !== 'node-detail' || detailNode !== n) return;
+    if (d && Array.isArray(d.p)) { lastQnData = d; live.innerHTML = quadNetLiveHtml(d); }
+  };
+
+  // Identify (LED flash) + Reboot. quadNET drives these over GET /id and /rb;
+  // both reply before acting (reboot prints its 204, then resets), so the fetch
+  // resolves cleanly.
+  $('qnIdentifyBtn')?.addEventListener('click', async () => {
+    try { await nodeApi('GET', n.ip, '/id'); toast('Identify — LEDs flashing for 3s'); }
+    catch (e) { toast('Identify failed', 'err'); }
+  });
+  $('qnRebootBtn')?.addEventListener('click', async () => {
+    if (!confirm('Reboot quadNET? It will drop off the network for a few seconds.')) return;
+    try { await nodeApi('GET', n.ip, '/rb'); toast('Rebooting — the switch will rejoin shortly'); }
+    catch (e) { toast('Reboot request sent', 'ok'); }   // connection may close as it resets
+  });
+
+  // Delegated click handler on #quadnetLive (persists across the 2s refresh):
+  // port Enable/Disable buttons AND the Network buttons.
+  live.addEventListener('click', async ev => {
+    const btn = ev.target.closest('[data-qn-port]');
+    const net = ev.target.closest('[data-qn-net]');
+    if (btn) {
+      const idx = btn.dataset.qnPort, target = btn.dataset.qnEnable, name = btn.dataset.qnName;
+      btn.disabled = true;   // uplink has no button, so this is always a non-uplink port
+      try {
+        await nodeApi('GET', n.ip, `/p?n=${idx}&e=${target}`);
+        toast(target === '1' ? `${name} enabled` : `${name} disabled`);
+        await refresh();
+      } catch (e) {
+        if (String(e.message).includes('409'))
+          toast('Refused — that is the only port with link; disabling it would cut access', 'err', 5000);
+        else toast('Port change failed', 'err');
+        btn.disabled = false;
+      }
+    } else if (net) {
+      const mode = net.dataset.qnNet;
+      if (mode === 'dhcp') {
+        if (!confirm('Switch to DHCP? The quadNET reboots and takes an address automatically.')) return;
+        try { await nodeApi('GET', n.ip, '/net?dhcp=1'); } catch (e) {}
+        toast('Reverting to DHCP — switch rebooting'); setTimeout(() => location.hash = '#nodes', 1500);
+      } else {
+        const c = lastQnData || {};
+        const inp = prompt(
+          'Static management IP — enter: IP, subnet, gateway\n\n' +
+          '⚠ A wrong address or subnet can make the switch unreachable; ' +
+          'recovery then needs a USB reflash.',
+          `${c.ip || n.ip}, ${c.mask || '255.255.255.0'}, ${c.gw || ''}`);
+        if (inp === null) return;
+        const parts = inp.split(',').map(s => s.trim());
+        if (parts.length !== 3 || !parts.every(isIpv4)) { toast('Enter three valid IPv4 addresses', 'err'); return; }
+        if (!confirm(`Set static ${parts[0]} / ${parts[1]}, gateway ${parts[2]}, and reboot now?`)) return;
+        try { await nodeApi('GET', n.ip, `/net?ip=${parts[0]}&mask=${parts[1]}&gw=${parts[2]}`); } catch (e) {}
+        toast('Static IP saved — switch rebooting'); setTimeout(() => location.hash = '#nodes', 1500);
+      }
+    }
+  });
+
+  // Delegated change handler for the per-port forced-speed selects.
+  live.addEventListener('change', async ev => {
+    const sel = ev.target.closest('[data-qn-spd]');
+    if (!sel) return;
+    try {
+      await nodeApi('GET', n.ip, `/spd?n=${sel.dataset.qnSpd}&v=${sel.value}`);
+      toast(sel.value === '0' ? 'Port set to autoneg' : `Port forced to ${QN_SPD[+sel.value]}`);
+      await refresh();
+    } catch (e) {
+      toast(String(e.message).includes('409') ? 'Uplink stays on autoneg' : 'Speed change failed', 'err');
+      await refresh();
+    }
+  });
+
+  await refresh();
+  // Light 2s poll while the page is open; torn down by stopPollTimer().
+  quadNetTimer = setInterval(refresh, 2000);
+}
+
+// ── masterMIDI (timecode hub) — its own detail page ──────────────────────────
+// masterMIDI shares none of the DMX surfaces (no ports, universes, RDM, scenes),
+// so like quadNET it diverts to a page of its own. Everything is the node's own
+// API called cross-origin (masterMIDI ships CORS): /api/status for the live
+// clock and signal flow, /api/routing + /api/timecode for the patch, and
+// /api/selftest. Source values are what the node stores: 4 = none, 5 = Auto
+// (display only), Network In = 6 — look names up by value, never by position.
+const MM_SRC = { 0: 'USB Input', 1: 'DIN Input', 6: 'Network Input', 2: 'SMPTE Input', 3: 'Internal Clock' };
+const MM_SRC_SHORT = { 0: 'USB In', 1: 'DIN In', 2: 'SMPTE In', 3: 'Internal', 6: 'Network In' };
+const MM_SRC_ORDER = [0, 1, 6, 2, 3];
+const MM_OUT = ['USB MIDI out', 'DIN MIDI out', 'SMPTE / LTC out', 'Network MIDI out'];
+const MM_SELF = [0, 1, -1, 6];          // the input each output can't take (its own port)
+const MM_RATES = ['24 fps', '25 fps', '29.97 drop-frame', '29.97 non-drop', '30 fps'];
+
+let mmTimer = null, mmClockTimer = null;
+function stopMasterMidiPoll() {
+  if (mmTimer) { clearInterval(mmTimer); mmTimer = null; }
+  if (mmClockTimer) { clearInterval(mmClockTimer); mmClockTimer = null; }
+}
+const mmPad = v => String(v).padStart(2, '0');
+function mmTc(s) {
+  return `${mmPad(s.tc_h)}:${mmPad(s.tc_m)}:${mmPad(s.tc_s)}${s.df ? ';' : ':'}${mmPad(s.tc_f)}`;
+}
+
+// Nodes-list strip: the clock and what it's following, in place of DMX ports.
+function masterMidiStrip(s) {
+  const live = !!s.live;
+  return `
+    <div class="live-strip">
+      <span class="port"><span class="ldot${live ? ' active' : ''}"></span>
+        <span class="m" style="font-family:var(--mono)">${esc(mmTc(s))}</span>
+        <span class="r">${live ? esc(s.source || '') + ' · ' + esc(s.rate || s.fps) + ' fps' : 'no timecode'}</span></span>
+      ${(s.net_midi || []).length ? `<span class="port"><span class="m">Network MIDI · ${s.net_midi.length} connected</span></span>` : ''}
+    </div>`;
+}
+
+function mmFlowRow(on, name, detail) {
+  return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px${on ? '' : ';color:var(--text-dim)'}">
+    <span class="dot ${on ? 'ok' : ''}"></span>${name}
+    <span style="margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--text-dim)">${detail}</span></div>`;
+}
+
+function masterMidiLiveHtml(s) {
+  const im = s.in_mask || 0, om = s.out_mask || 0, out = s.out || [], peers = s.net_midi || [];
+  const slaved = (s.source || '').indexOf('Input') >= 0;
+  const lock = s.locked
+    ? `<span class="dot ${slaved ? 'ok' : 'warn'}"></span>${slaved ? 'Chasing ' + esc(s.source) : 'Running on the internal clock'}`
+    : `<span class="dot err"></span>No timecode`;
+  const intUsed = out.indexOf(3) >= 0;
+  const ins =
+    mmFlowRow(im & 1, 'USB In', s.usb_mounted ? 'computer connected' : 'no computer') +
+    mmFlowRow(im & 2, 'DIN MIDI In', (s.din_rx || 0) + ' bytes') +
+    mmFlowRow(im & 4, 'Timecode In (LTC)', (im & 4) ? 'receiving' : 'no signal') +
+    mmFlowRow(im & 8, 'Network MIDI In', peers.length ? peers.length + ' connected' : 'nobody connected') +
+    mmFlowRow(intUsed, 'Internal clock', intUsed ? 'running' : 'not used');
+  const det = [s.usb_mounted ? 'computer connected' : 'no computer', '', s.ltc_run ? 'sending' : 'idle',
+               peers.length ? peers.length + ' connected' : 'nobody connected'];
+  const outs = MM_OUT.map((nm, o) => {
+    const src = out[o];
+    const from = (src === 4 || src == null || MM_SRC_SHORT[src] == null)
+      ? ' <span class="dim">· silent</span>'
+      : ` <span style="color:var(--accent2);font-family:var(--mono);font-size:12px">← ${esc(MM_SRC_SHORT[src])}</span>`;
+    return mmFlowRow((om >> o) & 1, nm + from, det[o]);
+  }).join('');
+  return `
+    <div class="subsection">
+      <div class="section-section-title">Timecode</div>
+      <div id="mmClock" style="font-family:var(--mono);font-size:clamp(30px,6vw,52px);font-weight:700;letter-spacing:.04em;color:${s.locked ? 'var(--accent2)' : 'var(--text)'}">${esc(mmTc(s))}</div>
+      <div style="display:flex;gap:18px;font-family:var(--mono);font-size:12px;color:var(--text-dim);flex-wrap:wrap;margin-top:4px">
+        <span>${lock}</span><span>${esc(s.rate || s.fps)} fps</span>
+      </div>
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">Signal flow</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 28px">
+        <div><div class="hint" style="text-transform:uppercase;font-size:10px;letter-spacing:.08em">Inputs</div>${ins}</div>
+        <div><div class="hint" style="text-transform:uppercase;font-size:10px;letter-spacing:.08em">Outputs</div>${outs}</div>
+      </div>
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">Network MIDI</div>
+      <div class="status-grid">
+        <div class="sk">Session name</div><div class="sv">${esc(s.net_name || '—')}</div>
+        ${peers.map(p => `<div class="sk">${esc(p.name || '(unnamed)')}</div><div class="sv">${esc(p.ip)} · heard ${p.age < 2 ? 'just now' : p.age + ' s ago'}</div>`).join('')}
+        ${peers.length ? '' : '<div class="sk">Connected</div><div class="sv dim">Nobody — connect from Audio MIDI Setup (Mac) or rtpMIDI (Windows)</div>'}
+      </div>
+    </div>`;
+}
+
+function masterMidiRoutingHtml(routing, tc) {
+  const out = routing.out || [4, 0, 0, 0];
+  const srcOpts = (o, cur) => MM_SRC_ORDER.filter(sv => MM_SELF[o] !== sv)
+    .map(sv => `<option value="${sv}"${sv === cur ? ' selected' : ''}>${esc(MM_SRC[sv])}</option>`).join('') +
+    `<option value="4"${cur === 4 ? ' selected' : ''}>None</option>`;
+  const sel = (id, opts) => `<select id="${id}" style="${QN_SEL_STYLE};min-width:200px">${opts}</select>`;
+  return `
+    <div class="subsection">
+      <div class="section-section-title">Routing</div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Each output takes one source. An output can't take its own input.</p>
+      <div class="status-grid">
+        ${MM_OUT.map((nm, o) => `<div class="sk">${esc(nm)}</div><div class="sv">${sel('mmOut' + o, srcOpts(o, out[o]))}</div>`).join('')}
+      </div>
+      <div class="section-section-title" style="margin-top:16px">Internal clock</div>
+      <div class="status-grid">
+        <div class="sk">Frame rate</div><div class="sv">${sel('mmRate', MM_RATES.map((r, i) => `<option value="${i}"${i === tc.rate ? ' selected' : ''}>${r}</option>`).join(''))}</div>
+        <div class="sk">Start at</div><div class="sv"><input type="text" id="mmStart" value="${esc(tc.start || '01:00:00:00')}" style="${QN_SEL_STYLE};width:130px"></div>
+        <div class="sk">Display follows</div><div class="sv">${sel('mmMode',
+          [[5, 'Auto (whichever input is live)'], [0, 'USB Input'], [1, 'DIN Input'], [6, 'Network Input'], [2, 'SMPTE Input'], [3, 'Internal Clock']]
+            .map(([v, t]) => `<option value="${v}"${v === tc.mode ? ' selected' : ''}>${t}</option>`).join(''))}</div>
+      </div>
+      <div class="btn-row" style="margin-top:10px"><button class="btn btn-primary btn-small" id="mmSaveBtn">Save routing</button></div>
+    </div>`;
+}
+
+function masterMidiSelfTestHtml(d) {
+  const tests = d.tests || [];
+  const fail = tests.filter(t => !t.skip && !t.pass).length;
+  return `
+    <div style="margin:8px 0;font-weight:600;color:${fail ? 'var(--err)' : 'var(--ok)'}">${fail ? fail + (fail > 1 ? ' problems found' : ' problem found') : 'All tests passed'}${d.full ? ' · factory test' : ''}</div>
+    <div class="status-grid">${tests.map(t => {
+      const cls = t.skip ? 'dim' : (t.pass ? 'ok' : 'err'), mk = t.skip ? '○' : (t.pass ? '✓' : '✗');
+      return `<div class="sk">${esc(t.name)}</div><div class="sv ${cls}">${mk} ${esc(t.detail || '')}${t.tech ? `<div class="dim" style="font-size:11px">${esc(t.tech)}</div>` : ''}</div>`;
+    }).join('')}</div>`;
+}
+
+async function renderMasterMidiDetail(n) {
+  stopMasterMidiPoll();
+  const tag = getTag(n.mac);
+  const headerName = tag || n.nodeName || n.ip;
+  const onlineSv = n.online ? `<span class="dot ok"></span> Online` : `<span class="dot"></span> Offline · seen ${formatTimeSince(n.lastSeenSecondsAgo)} ago`;
+
+  content.innerHTML = `
+    <div class="section-header">
+      <div style="display:flex;align-items:baseline;flex-wrap:wrap">
+        <div class="section-title">${esc(headerName)}</div>
+        <span class="tag-editor">
+          ${tag
+            ? `<span class="current">${esc(tag)}</span><button class="pencil" id="tagEditBtn" title="Edit label">edit</button>`
+            : `<button class="pencil" id="tagEditBtn" title="Set a local label for this node">+ tag</button>`}
+        </span>
+        <span class="tag" style="margin-left:10px">Timecode</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <a href="#nodes" class="btn btn-secondary btn-small">← Nodes</a>
+        <a class="btn btn-primary btn-small" href="http://${esc(n.ip)}/" target="_blank" rel="noreferrer">Open node UI →</a>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Identity</div>
+      <div class="status-grid">
+        <div class="sk">Status</div>          <div class="sv ${n.online ? 'ok' : 'dim'}">${onlineSv}</div>
+        <div class="sk">IP Address</div>      <div class="sv">${esc(n.ip)}</div>
+        <div class="sk">MAC Address</div>     <div class="sv">${esc(n.mac)}</div>
+        <div class="sk">Node Name</div>       <div class="sv">${esc(n.nodeName) || '<span class="dim">—</span>'}</div>
+        <div class="sk">Device Type</div>     <div class="sv">${esc(n.deviceType) || '<span class="dim">—</span>'}</div>
+        <div class="sk">Firmware</div>        <div class="sv">${esc(n.firmwareVersion) || '<span class="dim">—</span>'}</div>
+        <div class="sk">Serial Number</div>   <div class="sv">${esc(n.serialNumber) || '<span class="dim">—</span>'}</div>
+      </div>
+    </div>
+
+    ${n.online ? `
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="mmLocateBtn">Locate (flash 10s)</button>
+      <button class="btn btn-danger" id="mmRebootBtn">Reboot</button>
+    </div>
+    <div id="mmLive"><div class="loading" style="padding:16px 0">Reading timecode…</div></div>
+    <div id="mmRouting"></div>
+    <div class="subsection">
+      <div class="section-section-title">Self-test</div>
+      <p style="font-size:12px;color:var(--text-dim)">The self-test changes nothing and is safe during a show. The factory test needs
+        loopback cables (MIDI OUT → MIDI IN, LTC OUT → timecode input) and briefly interrupts those outputs.</p>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-secondary btn-small" id="mmTestBtn">Run self-test</button>
+        <button class="btn btn-secondary btn-small" id="mmFactoryBtn">Factory test…</button>
+      </div>
+      <div id="mmTestOut"></div>
+    </div>` : `
+    <div class="subsection"><p style="font-size:13px;color:var(--text-dim)">Node is offline — live timecode unavailable.</p></div>`}`;
+
+  $('tagEditBtn')?.addEventListener('click', async () => {
+    const current = getTag(n.mac);
+    const next = prompt('Label for this node (stored on masterETH).\nLeave blank to remove.', current);
+    if (next === null) return;
+    try { await setTag(n.mac, next.trim()); toast(next.trim() ? 'Tag saved' : 'Tag removed'); renderMasterMidiDetail(n); }
+    catch (e) { /* setTag already toasted */ }
+  });
+  if (!n.online) return;
+
+  $('mmLocateBtn').addEventListener('click', async () => {
+    try { await nodeApi('POST', n.ip, '/api/locate', {}); toast('Locate — the display and lights flash for 10 s'); }
+    catch (e) { toast('Locate failed', 'err'); }
+  });
+  $('mmRebootBtn').addEventListener('click', async () => {
+    if (!confirm('Reboot this masterMIDI? Timecode output stops for a few seconds.')) return;
+    try { await nodeApi('POST', n.ip, '/api/reboot', {}); } catch (e) {}
+    toast('Rebooting — it will rejoin shortly');
+  });
+
+  // Self-test: one request, answered when done (~0.1 s, ~3 s for the factory test).
+  const runTest = async full => {
+    const out = $('mmTestOut'); if (!out) return;
+    $('mmTestBtn').disabled = $('mmFactoryBtn').disabled = true;
+    out.innerHTML = `<div class="loading" style="padding:10px 0">${full ? 'Factory test' : 'Self-test'} running…</div>`;
+    try { out.innerHTML = masterMidiSelfTestHtml(await nodeApi('POST', n.ip, '/api/selftest' + (full ? '?full=1' : ''), {})); }
+    catch (e) { out.innerHTML = '<p style="font-size:13px;color:var(--err)">The self-test did not answer — try again.</p>'; }
+    if ($('mmTestBtn')) $('mmTestBtn').disabled = $('mmFactoryBtn').disabled = false;
+  };
+  $('mmTestBtn').addEventListener('click', () => runTest(false));
+  $('mmFactoryBtn').addEventListener('click', () => {
+    if (confirm('Run the factory test?\n\nIt needs two loopback cables — MIDI OUT to MIDI IN, and LTC OUT to the timecode input — ' +
+                'and for about three seconds those outputs carry test signals instead of timecode. Don\'t run it during a show.')) runTest(true);
+  });
+
+  // Routing form: loaded once (a poll would overwrite a half-made edit).
+  try {
+    const [routing, tc] = await Promise.all([nodeApi('GET', n.ip, '/api/routing'), nodeApi('GET', n.ip, '/api/timecode')]);
+    if (currentPage !== 'node-detail' || detailNode !== n) return;
+    $('mmRouting').innerHTML = masterMidiRoutingHtml(routing, tc);
+    $('mmSaveBtn').addEventListener('click', async () => {
+      try {
+        await nodeApi('POST', n.ip, '/api/routing', { out: MM_OUT.map((_, o) => parseInt($('mmOut' + o).value, 10)) });
+        await nodeApi('POST', n.ip, '/api/timecode', { rate: parseInt($('mmRate').value, 10), start: $('mmStart').value.trim(),
+                                                       mode: parseInt($('mmMode').value, 10) });
+        toast('Routing saved');
+      } catch (e) { toast('Save failed', 'err'); }
+    });
+  } catch (e) {
+    $('mmRouting').innerHTML = '<div class="subsection"><p style="font-size:13px;color:var(--err)">Could not read the routing.</p></div>';
+  }
+
+  // Live block, polled twice a second; the clock is counted forward locally in
+  // between (as the node's own page does) so it reads smoothly without
+  // hammering the node. One request in flight at a time.
+  let base = null, baseMs = 0, busy = false;
+  const live = $('mmLive');
+  const refresh = async () => {
+    if (busy) return; busy = true;
+    const t0 = performance.now();
+    let s;
+    try { s = await nodeApi('GET', n.ip, '/api/status'); } catch (e) { busy = false; return; }
+    busy = false;
+    if (currentPage !== 'node-detail' || detailNode !== n) return;
+    live.innerHTML = masterMidiLiveHtml(s);
+    base = s; baseMs = (t0 + performance.now()) / 2;
+  };
+  const tick = () => {
+    const el = $('mmClock'); if (!el || !base || !base.live) return;
+    const fps = base.fps || 25, adv = Math.floor((performance.now() - baseMs) * fps / 1000);
+    if (adv <= 0 || base.df) return;              // drop-frame: show the polled value, no arithmetic
+    let f = ((base.tc_h * 60 + base.tc_m) * 60 + base.tc_s) * fps + base.tc_f + adv;
+    const ff = f % fps; f = Math.floor(f / fps);
+    el.textContent = `${mmPad(Math.floor(f / 3600) % 24)}:${mmPad(Math.floor(f / 60) % 60)}:${mmPad(f % 60)}:${mmPad(ff)}`;
+  };
+  await refresh();
+  mmTimer = setInterval(refresh, 500);
+  mmClockTimer = setInterval(tick, 40);
+}
+
 async function renderNodeDetail(ip, tab) {
   tab = tab || 'identity';
   // Refresh registry first to get freshest data for this node
@@ -1475,6 +2129,12 @@ async function renderNodeDetail(ip, tab) {
       <div class="btn-row"><a href="#nodes" class="btn btn-secondary">← Back to nodes</a></div>`;
     return;
   }
+
+  // quadNET (the switch) has its own read-only detail page — it shares none of
+  // the DMX-node surfaces (no /api/status, /api/ports, RDM, scenes, display), so
+  // divert before any of that machinery runs.
+  if (isQuadNetNode(n)) { detailNode = n; return renderQuadNetDetail(n); }
+  if (isMasterMidiNode(n)) { detailNode = n; return renderMasterMidiDetail(n); }
 
   // Configuration tab is only meaningful for compatible nodes that are
   // online (readonly v7.3 nodes can't accept POSTs cross-origin, and
@@ -3218,7 +3878,11 @@ async function renderUniverses() {
   let nodesResp;
   try { nodesResp = await api('GET', '/api/nodes'); }
   catch (e) { content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>'; return; }
-  const nodes = (nodesResp.nodes || []).filter(n => n.compat === 'compatible' || n.compat === 'readonly');
+  // Switches (quadNET) have no Art-Net universes — exclude them, or their status
+  // JSON (returned for any /api/* path) registers as a phantom universe-0 port
+  // and a false conflict.
+  const nodes = (nodesResp.nodes || []).filter(n =>
+    (n.compat === 'compatible' || n.compat === 'readonly') && !isQuadNetNode(n) && !isMasterMidiNode(n));
 
   // Fetch per-node port configs in parallel-across-nodes (the per-IP queue
   // serialises within a node). Failures are tolerated — one offline node
@@ -3324,13 +3988,222 @@ function computeConsumedUniverses(cfg, n) {
 
 // ── Network page ─────────────────────────────────────────────────────────────
 
-async function renderNetwork() {
-  content.innerHTML = '<div class="loading">Fetching network config…</div>';
-  let d;
-  try { d = await api('GET', '/api/network'); }
-  catch(e) { content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>'; return; }
+// ── Network Tools (switches) — repurposed IP & Network tab ───────────────────
+// Three tools in the spirit of Universes/Monitor, but for the fleet's switches:
+// a live port-link matrix, an IP/DHCP overview with conflict detection, and an
+// aggregated link-event feed. All data comes from each switch's /api plus the
+// masterETH registry/status — no firmware change.
 
-  const fb = d.dhcpFallback || {};
+function swPortCell(p) {
+  let c = '', v;
+  if (!p.en)     { c = '';     v = 'off'; }
+  else if (!p.e) { c = 'err';  v = 'fault'; }
+  else if (!p.u) { c = '';     v = '—'; }
+  else if (p.l)  { c = 'info'; v = p.s + 'M'; }
+  else           { c = p.s === 100 ? 'ok' : 'warn'; v = p.s + (p.d ? 'F' : 'H'); }
+  return `<td><span class="dot ${c}"></span> <span class="dim">${esc(v)}</span></td>`;
+}
+
+function switchMatrixHtml(switches, live) {
+  if (!switches.length)
+    return '<div class="subsection"><div class="section-section-title">Port link matrix</div><div class="empty-state">No switches discovered yet.</div></div>';
+  const rows = switches.map(s => {
+    const d = live[s.mac];
+    const name = getTag(s.mac) || s.nodeName || s.ip;
+    const cells = (!s.online || !d)
+      ? `<td colspan="4" class="dim" style="text-align:center">${s.online ? 'reading…' : 'offline'}</td>`
+      : (d.p || []).map(swPortCell).join('');
+    return `<tr data-sw-ip="${esc(s.ip)}" style="cursor:pointer"><td style="font-family:var(--mono)">${esc(name)}</td>${cells}</tr>`;
+  }).join('');
+  return `<div class="subsection">
+    <div class="section-section-title">Port link matrix</div>
+    <table class="rdm-table"><thead><tr><th>Switch</th><th>Port 1</th><th>Port 2</th><th>Port 3</th><th>Port 4</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="hint" style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap">
+      <span><span class="dot info"></span> uplink</span><span><span class="dot ok"></span> 100M</span>
+      <span><span class="dot warn"></span> 10M</span><span><span class="dot err"></span> PHY fault</span>
+      <span><span class="dot"></span> no link / off</span></p>
+  </div>`;
+}
+
+function ipOverviewHtml(nodes, self, live, stat) {
+  const rows = [{ name: 'masterETH', ip: self.ipAddress, mac: self.macAddress || '',
+    mode: (self.dhcpServer && self.dhcpServer.active) ? 'DHCP server' : (self.dhcp ? 'DHCP client' : 'Static'),
+    subnet: self.subnet, type: self.deviceType || 'manager', sw: false }];
+  nodes.forEach(n => {
+    if (!n.online) return;
+    let mode = '—', subnet = '—';
+    if (isQuadNetNode(n)) {
+      const d = live[n.mac];   // switches expose st/sv/mask on /api
+      if (d) { mode = d.st ? 'Static' : (d.sv ? 'DHCP server' : 'DHCP client'); subnet = d.mask || '—'; }
+    } else {
+      const s = stat[n.mac];   // dualETH/quadETH expose dhcp/subnet on /api/status
+      if (s) { mode = s.dhcp ? 'DHCP client' : 'Static'; subnet = s.subnet || '—'; }
+    }
+    rows.push({ name: getTag(n.mac) || n.nodeName || n.ip, ip: n.ip, mac: n.mac, mode, subnet, type: n.deviceType, sw: isQuadNetNode(n) });
+  });
+
+  const ipCount = {};
+  rows.forEach(r => { if (r.ip && r.ip !== '0.0.0.0') ipCount[r.ip] = (ipCount[r.ip] || 0) + 1; });
+  const dupIps = Object.keys(ipCount).filter(ip => ipCount[ip] > 1);
+  const dhcpServers = rows.filter(r => r.mode === 'DHCP server').length;
+
+  const body = rows.map(r => `<tr ${r.sw ? `data-sw-ip="${esc(r.ip)}" style="cursor:pointer"` : ''}>
+    <td>${esc(r.name)}${dupIps.includes(r.ip) ? ' <span class="tag err">dup IP</span>' : ''}</td>
+    <td style="color:var(--accent2)">${esc(r.ip)}</td>
+    <td>${esc(r.mode)}</td>
+    <td>${esc(r.subnet)}</td>
+    <td class="dim">${esc(r.type)}</td></tr>`).join('');
+
+  const conflicts = [];
+  if (dupIps.length)     conflicts.push(`Duplicate IP address in use: ${dupIps.join(', ')}`);
+  if (dhcpServers > 1)   conflicts.push(`${dhcpServers} DHCP servers active on the fleet — risk of conflicting leases`);
+
+  return `<div class="subsection">
+    <div class="section-section-title">IP &amp; DHCP overview</div>
+    <table class="rdm-table"><thead><tr><th>Device</th><th>IP</th><th>Mode</th><th>Subnet</th><th>Type</th></tr></thead><tbody>${body}</tbody></table>
+    <div style="margin-top:8px">${conflicts.length
+      ? conflicts.map(c => `<div class="sv" style="color:var(--err)">⚠ ${esc(c)}</div>`).join('')
+      : '<div class="sv ok">✓ No IP or DHCP conflicts detected across the fleet.</div>'}</div>
+  </div>`;
+}
+
+function linkFeedHtml(switches, live) {
+  const evs = [];
+  switches.forEach(s => {
+    const d = live[s.mac]; if (!d) return;
+    const name = getTag(s.mac) || s.nodeName || s.ip;
+    (d.ev || []).forEach(e => evs.push({ name, port: e.p, up: e.u, ago: Math.max(0, d.up - e.t) }));
+  });
+  evs.sort((a, b) => a.ago - b.ago);
+  const rows = evs.slice(0, 30).map(e =>
+    `<tr><td class="dim">${e.ago < 60 ? e.ago + 's' : fmtDur(e.ago)} ago</td><td>${esc(e.name)}</td>
+     <td style="font-family:var(--mono)">${esc(e.port)}</td>
+     <td style="color:${e.up ? 'var(--ok)' : 'var(--text-dim)'}">${e.up ? '↑ up' : '↓ down'}</td></tr>`).join('');
+  return `<div class="subsection">
+    <div class="section-section-title">Live link events</div>
+    ${rows
+      ? `<table class="rdm-table"><thead><tr><th>When</th><th>Switch</th><th>Port</th><th>Event</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<div class="sv dim">No link changes recorded across switches.</div>'}
+  </div>`;
+}
+
+async function renderSwitchTools() {
+  if (currentPage !== 'network') return;
+  content.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Network Tools</div>
+      <div class="heartbeat" id="hb"><span class="hb-dot"></span><span>Live</span></div>
+    </div>
+    <div id="swToolsData"><div class="loading">Loading…</div></div>
+    ${scannerSectionHtml()}`;
+  const hb = $('hb'); if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
+  wireScanner();
+  await refreshSwitchTools();
+}
+
+// Update only the three live tool sections. The scanner section is rendered once
+// by renderSwitchTools and self-manages its own poll, so the 5s tool refresh
+// never resets an in-progress scan.
+async function refreshSwitchTools() {
+  if (currentPage !== 'network') return;
+  let reg, self;
+  try { [reg, self] = await Promise.all([api('GET', '/api/nodes'), api('GET', '/api/status')]); }
+  catch (e) { return; }
+  if (currentPage !== 'network') return;
+  const nodes = reg.nodes || [];
+  const switches = nodes.filter(isQuadNetNode).sort((a, b) => (b.online - a.online) || a.ip.localeCompare(b.ip));
+  const live = {}, stat = {};
+  await Promise.all([
+    ...switches.filter(s => s.online).map(async s => { try { live[s.mac] = await nodeApi('GET', s.ip, '/api'); } catch (e) {} }),
+    ...nodes.filter(n => n.online && !isQuadNetNode(n)).map(async n => { try { stat[n.mac] = await nodeApi('GET', n.ip, '/api/status'); } catch (e) {} }),
+  ]);
+  if (currentPage !== 'network') return;
+  const el = $('swToolsData'); if (!el) return;
+  el.innerHTML = switchMatrixHtml(switches, live) + ipOverviewHtml(nodes, self, live, stat) + linkFeedHtml(switches, live);
+  el.querySelectorAll('[data-sw-ip]').forEach(x => x.addEventListener('click', () => { location.hash = '#node/' + x.dataset.swIp; }));
+}
+
+// ── LAN scanner (masterETH connect-scans the subnet; see src/scanner.cpp) ─────
+let scannerPollTimer = null;
+function stopScanPoll() { if (scannerPollTimer) { clearInterval(scannerPollTimer); scannerPollTimer = null; } }
+function startScanPoll() { stopScanPoll(); pollScanOnce(); scannerPollTimer = setInterval(pollScanOnce, 1500); }
+
+function scannerSectionHtml() {
+  return `<div class="subsection">
+    <div class="section-section-title">LAN scanner</div>
+    <p class="hint" style="max-width:640px;margin-bottom:10px">Connect-scans the local subnet for <em>unknown</em> live hosts and open TCP ports (TCP-connect only, no ICMP). A host silent on the first port is treated as down, so lead with a likely-open port such as 80. Already-known fleet nodes (and masterETH itself) are skipped — see them in the IP &amp; DHCP overview above. Runs on masterETH in the background; the UI stays responsive.</p>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+      <label class="hint">Ports (max 6)<br><input id="scanPorts" value="80,443,22" style="width:180px"></label>
+      <label class="hint">From<br><input id="scanStart" type="number" min="1" max="254" value="1" style="width:72px"></label>
+      <label class="hint">To<br><input id="scanEnd" type="number" min="1" max="254" value="254" style="width:72px"></label>
+      <button class="btn btn-primary btn-small" id="scanStartBtn">Scan</button>
+      <button class="btn btn-secondary btn-small" id="scanStopBtn" style="display:none">Stop</button>
+    </div>
+    <div id="scanProgress"></div>
+    <div id="scanResults"></div>
+  </div>`;
+}
+
+function wireScanner() {
+  $('scanStartBtn')?.addEventListener('click', async () => {
+    const ports = ($('scanPorts').value || '80').trim();
+    const start = $('scanStart').value || 1, end = $('scanEnd').value || 254;
+    try {
+      await api('POST', `/api/scan?ports=${encodeURIComponent(ports)}&start=${start}&end=${end}`);
+      toast('Scan started');
+      startScanPoll();
+    } catch (e) { toast('A scan is already running', 'err'); }
+  });
+  $('scanStopBtn')?.addEventListener('click', async () => {
+    try { await api('POST', '/api/scan/stop'); } catch (e) {}
+    stopScanPoll(); pollScanOnce();
+  });
+  pollScanOnce();   // reflect any scan already in progress when the tab opens
+}
+
+async function pollScanOnce() {
+  if (currentPage !== 'network') { stopScanPoll(); return; }
+  let d;
+  try { d = await api('GET', '/api/scan'); } catch (e) { return; }
+  const prog = $('scanProgress'), res = $('scanResults'), sb = $('scanStartBtn'), tb = $('scanStopBtn');
+  if (!prog || !res) return;
+  if (sb) sb.style.display = d.active ? 'none' : '';
+  if (tb) tb.style.display = d.active ? '' : 'none';
+  const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
+  prog.innerHTML = d.active
+    ? `<div class="hint" style="display:flex;align-items:center;gap:10px">Scanning ${d.start}–${d.end} · ${d.done}/${d.total} <span class="bar" style="flex:1;max-width:300px"><span class="bar-fill" style="width:${pct}%"></span></span></div>`
+    : (d.done ? `<div class="hint">Scan complete · ${d.done}/${d.total} scanned · ${d.hosts.length} host${d.hosts.length === 1 ? '' : 's'} up · ports [${d.ports.join(', ')}]</div>` : '');
+  res.innerHTML = d.hosts.length
+    ? `<table class="rdm-table" style="margin-top:8px"><thead><tr><th>Host</th><th>Open TCP ports</th></tr></thead><tbody>${
+        d.hosts.map(h => `<tr><td><a href="http://${esc(h.ip)}" target="_blank" rel="noreferrer" style="color:var(--accent2)">${esc(h.ip)}</a></td>
+          <td>${h.ports.length ? h.ports.map(p => `<span class="tag ok" style="margin-right:4px">${p}</span>`).join('') : '<span class="dim">host up · no scanned ports open</span>'}</td></tr>`).join('')}</tbody></table>`
+    : (d.active ? '<div class="sv dim" style="margin-top:8px">Scanning…</div>' : (d.done ? '<div class="sv dim" style="margin-top:8px">No hosts responded.</div>' : ''));
+  if (!d.active) stopScanPoll();
+}
+
+function formatLeaseRemaining(sec) {
+  if (sec >= 3600) return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+  if (sec >= 60)   return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
+  return sec + 's';
+}
+
+// ── System page ──────────────────────────────────────────────────────────────
+
+async function renderSystem() {
+  if (currentPage !== 'system') return;
+  if (!content.querySelector('.subsection, form')) {
+    content.innerHTML = '<div class="loading">Fetching system status…</div>';
+  }
+  let d, net;
+  try { [d, net] = await Promise.all([api('GET', '/api/status'), api('GET', '/api/network')]); }
+  catch (e) {
+    if (currentPage !== 'system') return;
+    content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>';
+    return;
+  }
+  if (currentPage !== 'system') return;
+
+  const fb = net.dhcpFallback || {};
   const modeMap = {
     'dhcp-client':     { label: 'DHCP client',     cls: 'ok'   },
     'static':          { label: 'Static',          cls: 'dim'  },
@@ -3338,65 +4211,51 @@ async function renderNetwork() {
   };
   const m = modeMap[fb.currentMode] || { label: 'Unknown', cls: 'dim' };
 
+  // masterETH's own config (Identity / Networking / DHCP fallback) lives here now.
+  // The editable form renders once; the live status below refreshes on the poll
+  // via refreshSystemLive() so it never clobbers what you're typing.
   content.innerHTML = `
-    <div class="section-title">IP &amp; Network</div>
-    <form id="networkForm">
+    <div class="section-header">
+      <div class="section-title">System</div>
+      <div class="heartbeat" id="hb"><span class="hb-dot"></span><span>Live</span></div>
+    </div>
 
+    <form id="networkForm">
       <div class="subsection">
         <div class="section-section-title">Identity</div>
         <div class="status-grid">
-          <div class="sk">Node Name</div>
-          <div class="sv"><input type="text" name="nodeName" value="${esc(d.nodeName)}" maxlength="17"></div>
-          <div class="sk">Long Name</div>
-          <div class="sv dim">${esc(d.longName)}</div>
-          <div class="sk">Current Mode</div>
-          <div class="sv ${m.cls}">${m.label}</div>
+          <div class="sk">Node Name</div>    <div class="sv"><input type="text" name="nodeName" value="${esc(net.nodeName)}" maxlength="17"></div>
+          <div class="sk">Long Name</div>    <div class="sv dim">${esc(net.longName)}</div>
+          <div class="sk">Device Type</div>  <div class="sv">${esc(d.deviceType)}</div>
+          <div class="sk">MAC Address</div>  <div class="sv">${esc(d.macAddress)}</div>
+          <div class="sk">Firmware</div>     <div class="sv ok">${esc(d.firmwareVersion)}</div>
+          <div class="sk">Current Mode</div> <div class="sv ${m.cls}">${m.label}</div>
         </div>
       </div>
 
       <div class="subsection">
         <div class="section-section-title">Networking</div>
         <div class="status-grid">
-          <div class="sk">DHCP</div>
-          <div class="sv"><input type="checkbox" name="dhcpEnable" ${d.dhcp ? 'checked' : ''}></div>
-          <div class="sk">IP Address</div>
-          <div class="sv"><div class="ip-row">${ipInputs('ip', d.ip)}</div></div>
-          <div class="sk">Subnet</div>
-          <div class="sv"><div class="ip-row">${ipInputs('subnet', d.subnet)}</div></div>
-          <div class="sk">Gateway</div>
-          <div class="sv"><div class="ip-row">${ipInputs('gateway', d.gateway)}</div></div>
+          <div class="sk">DHCP</div>       <div class="sv"><input type="checkbox" name="dhcpEnable" ${net.dhcp ? 'checked' : ''}></div>
+          <div class="sk">IP Address</div> <div class="sv"><div class="ip-row">${ipInputs('ip', net.ip)}</div></div>
+          <div class="sk">Subnet</div>     <div class="sv"><div class="ip-row">${ipInputs('subnet', net.subnet)}</div></div>
+          <div class="sk">Gateway</div>    <div class="sv"><div class="ip-row">${ipInputs('gateway', net.gateway)}</div></div>
         </div>
       </div>
 
       <div class="subsection">
         <div class="section-section-title">DHCP Fallback</div>
         <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px 0;max-width:560px">
-          If DHCP is enabled and no upstream DHCP server replies at boot, masterETH
-          takes the static address below and serves DHCP itself. Off by default —
-          leave disabled on managed corporate networks.
+          If DHCP is enabled and no upstream DHCP server replies at boot, masterETH takes the
+          static address below and serves DHCP itself. Off by default — leave disabled on managed networks.
         </p>
         <div class="status-grid">
-          <div class="sk">Enabled</div>
-          <div class="sv"><input type="checkbox" name="fbEnabled" ${fb.enabled ? 'checked' : ''}></div>
-          <div class="sk">Fallback IP</div>
-          <div class="sv"><div class="ip-row">${ipInputs('fbIp', fb.ip || [10,10,1,1])}</div></div>
-          <div class="sk">Fallback Subnet</div>
-          <div class="sv"><div class="ip-row">${ipInputs('fbSubnet', fb.subnet || [255,255,255,0])}</div></div>
-          <div class="sk">Pool Start</div>
-          <div class="sv">
-            <input type="number" name="fbPoolStart" min="2" max="253" value="${fb.poolStart ?? 100}">
-            <span class="hint">last octet</span>
-          </div>
-          <div class="sk">Pool Size</div>
-          <div class="sv">
-            <input type="number" name="fbPoolSize" min="1" max="100" value="${fb.poolSize ?? 32}">
-            <span class="hint">addresses</span>
-          </div>
-          <div class="sk">Lease Time</div>
-          <div class="sv">
-            <input type="number" name="fbLeaseMinutes" min="1" max="1440" value="${Math.max(1, Math.round((fb.leaseSeconds ?? 3600) / 60))}">
-            <span class="hint">minutes</span>
-          </div>
+          <div class="sk">Enabled</div>         <div class="sv"><input type="checkbox" name="fbEnabled" ${fb.enabled ? 'checked' : ''}></div>
+          <div class="sk">Fallback IP</div>     <div class="sv"><div class="ip-row">${ipInputs('fbIp', fb.ip || [10,10,1,1])}</div></div>
+          <div class="sk">Fallback Subnet</div> <div class="sv"><div class="ip-row">${ipInputs('fbSubnet', fb.subnet || [255,255,255,0])}</div></div>
+          <div class="sk">Pool Start</div>      <div class="sv"><input type="number" name="fbPoolStart" min="2" max="253" value="${fb.poolStart ?? 100}"> <span class="hint">last octet</span></div>
+          <div class="sk">Pool Size</div>       <div class="sv"><input type="number" name="fbPoolSize" min="1" max="100" value="${fb.poolSize ?? 32}"> <span class="hint">addresses</span></div>
+          <div class="sk">Lease Time</div>      <div class="sv"><input type="number" name="fbLeaseMinutes" min="1" max="1440" value="${Math.max(1, Math.round((fb.leaseSeconds ?? 3600) / 60))}"> <span class="hint">minutes</span></div>
         </div>
       </div>
 
@@ -3405,8 +4264,34 @@ async function renderNetwork() {
         <span class="save-status" id="netStatus"></span>
       </div>
     </form>
+    <div id="leasesBlock" style="margin-top:28px"></div>
 
-    <div id="leasesBlock" style="margin-top: 28px"></div>`;
+    <div id="systemLive"></div>
+
+    <div class="subsection">
+      <div class="section-section-title">Fleet Health</div>
+      <div id="fleetGrid"><div class="loading" style="padding:8px 0">Aggregating…</div></div>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:8px">Aggregated from each compatible node's <code>/api/status</code>. Updates every 5 seconds.</p>
+    </div>
+
+    <div class="subsection">
+      <div class="section-section-title">Backup &amp; Restore</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px 0;max-width:560px">
+        Snapshot every compatible node's network + port config plus masterETH's own config to a single
+        JSON file. Restore matches nodes by MAC and re-applies settings; nodes not on the LAN are skipped.
+      </p>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-secondary" id="backupDownloadBtn">Download backup</button>
+        <label class="btn btn-secondary" style="cursor:pointer">
+          Upload &amp; restore…
+          <input type="file" id="backupRestoreInput" accept="application/json,.json" style="display:none">
+        </label>
+        <span class="save-status" id="backupStatus"></span>
+      </div>
+    </div>`;
+
+  const hb = $('hb');
+  if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
 
   $('networkForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -3431,121 +4316,56 @@ async function renderNetwork() {
       if (r.reboot) { showRebooting(); return; }
       showSaved('netStatus');
       toast('Network settings saved');
-    } catch(err) { toast('Save failed: ' + err.message, 'err'); }
+    } catch (err) { toast('Save failed: ' + err.message, 'err'); }
   });
 
-  // Live lease table — only meaningful when fallback is active. Polled
-  // every 5s while the user is on this page.
   if (fb.currentMode === 'fallback-server') {
     const renderLeases = async () => {
-      if (currentPage !== 'network') return;
+      if (currentPage !== 'system') return;
       let l;
-      try { l = await api('GET', '/api/dhcp-server/leases'); }
-      catch (err) { return; }
-      if (currentPage !== 'network') return;
-      const block = $('leasesBlock');
-      if (!block) return;
+      try { l = await api('GET', '/api/dhcp-server/leases'); } catch (err) { return; }
+      if (currentPage !== 'system') return;
+      const block = $('leasesBlock'); if (!block) return;
       const rows = (l.leases || []).map(x =>
-        `<div class="sk">${esc(x.ip)}</div>` +
-        `<div class="sv">${esc(x.mac)}</div>` +
-        `<div class="sv dim">${formatLeaseRemaining(x.expiresInSeconds)}</div>`
-      ).join('');
-      block.innerHTML = `
-        <div class="section-section-title">Active Leases (${(l.leases || []).length})</div>
+        `<div class="sk">${esc(x.ip)}</div><div class="sv">${esc(x.mac)}</div><div class="sv dim">${formatLeaseRemaining(x.expiresInSeconds)}</div>`).join('');
+      block.innerHTML = `<div class="section-section-title">Active Leases (${(l.leases || []).length})</div>
         ${rows
-          ? `<div class="status-grid" style="grid-template-columns: 140px 200px 1fr">
-               <div class="sk" style="font-weight:600">IP</div>
-               <div class="sk" style="font-weight:600">MAC</div>
-               <div class="sk" style="font-weight:600">Expires in</div>
-               ${rows}
-             </div>`
+          ? `<div class="status-grid" style="grid-template-columns:140px 200px 1fr"><div class="sk" style="font-weight:600">IP</div><div class="sk" style="font-weight:600">MAC</div><div class="sk" style="font-weight:600">Expires in</div>${rows}</div>`
           : '<div class="sv dim">No active leases.</div>'}`;
     };
     renderLeases();
-    const t = setInterval(() => {
-      if (currentPage !== 'network') { clearInterval(t); return; }
-      renderLeases();
-    }, 5000);
   }
+
+  wireBackupRestore();
+  refreshSystemLive(d);   // initial fill from the status we already fetched
 }
 
-function formatLeaseRemaining(sec) {
-  if (sec >= 3600) return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
-  if (sec >= 60)   return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
-  return sec + 's';
-}
-
-// ── System page ──────────────────────────────────────────────────────────────
-
-async function renderSystem() {
+// Refresh only the live portion of System (LED, live network, resources, fleet)
+// without touching the config form above. Runs on the 5s poll.
+async function refreshSystemLive(pre) {
   if (currentPage !== 'system') return;
-  if (!content.querySelector('.subsection')) {
-    content.innerHTML = '<div class="loading">Fetching system status…</div>';
-  }
-  let d;
-  try { d = await api('GET', '/api/status'); }
-  catch(e) {
-    if (currentPage !== 'system') return;
-    content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>';
-    return;
-  }
+  let d = pre;
+  if (!d) { try { d = await api('GET', '/api/status'); } catch (e) { return; } }
   if (currentPage !== 'system') return;
-
+  const slot = $('systemLive'); if (!slot) return;
   const heapKB    = (d.freeHeap / 1024).toFixed(1);
   const heapClass = d.freeHeap > 30000 ? 'ok' : (d.freeHeap > 15000 ? 'warn' : 'err');
   const fragClass = d.heapFragmentation < 30 ? 'ok' : (d.heapFragmentation < 60 ? 'warn' : 'err');
   const wdtClass  = d.wdtCounter === 0 ? 'ok' : 'warn';
-
-  content.innerHTML = `
-    <div class="section-header">
-      <div class="section-title">System</div>
-      <div class="heartbeat" id="hb"><span class="hb-dot"></span><span>Live</span></div>
-    </div>
-
-    <div class="subsection">
-      <div class="section-section-title">Identity</div>
-      <div class="status-grid">
-        <div class="sk">Node Name</div>     <div class="sv">${esc(d.nodeName)}</div>
-        <div class="sk">Device Type</div>   <div class="sv">${esc(d.deviceType)}</div>
-        <div class="sk">MAC Address</div>   <div class="sv">${esc(d.macAddress)}</div>
-        <div class="sk">Firmware</div>      <div class="sv ok">${esc(d.firmwareVersion)}</div>
-      </div>
-    </div>
-
+  slot.innerHTML = `
     <div class="subsection">
       <div class="section-section-title">Status LED</div>
-      <div class="led-cell" title="masterETH status indicator">
-        <div class="led-dot ${esc(d.led)}"></div>
-        <div class="led-label">STATUS<span class="sub">${esc(ledLabel(d.led))}</span></div>
-      </div>
+      <div class="led-cell" title="masterETH status indicator"><div class="led-dot ${esc(d.led)}"></div><div class="led-label">STATUS<span class="sub">${esc(ledLabel(d.led))}</span></div></div>
     </div>
-
     <div class="subsection">
-      <div class="section-section-title">Network</div>
+      <div class="section-section-title">Live Network</div>
       <div class="status-grid">
-        <div class="sk">Link</div>          <div class="sv ${d.linkUp ? 'ok' : 'err'}"><span class="dot ${d.linkUp ? 'ok' : 'err'}"></span> ${d.linkUp ? 'Up' : 'Down'}</div>
-        <div class="sk">IP Address</div>    <div class="sv">${esc(d.ipAddress)} <span class="tag">${d.dhcp ? 'DHCP' : 'static'}</span></div>
-        <div class="sk">Subnet</div>        <div class="sv">${esc(d.subnet)}</div>
+        <div class="sk">Link</div>         <div class="sv ${d.linkUp ? 'ok' : 'err'}"><span class="dot ${d.linkUp ? 'ok' : 'err'}"></span> ${d.linkUp ? 'Up' : 'Down'}</div>
+        <div class="sk">IP Address</div>   <div class="sv">${esc(d.ipAddress)} <span class="tag">${d.dhcp ? 'DHCP' : 'static'}</span></div>
+        <div class="sk">Subnet</div>       <div class="sv">${esc(d.subnet)}</div>
+        <div class="sk">Nodes Online</div> <div class="sv ${d.nodesOnline ? 'ok' : 'dim'}"><span class="dot ${d.nodesOnline ? 'ok' : ''}"></span> ${d.nodesOnline} / ${d.nodesKnown}</div>
       </div>
     </div>
-
-    <div class="subsection">
-      <div class="section-section-title">Discovery</div>
-      <div class="status-grid">
-        <div class="sk">Nodes Online</div>  <div class="sv ${d.nodesOnline ? 'ok' : 'dim'}"><span class="dot ${d.nodesOnline ? 'ok' : ''}"></span> ${d.nodesOnline} / ${d.nodesKnown}</div>
-      </div>
-    </div>
-
-    <div class="subsection">
-      <div class="section-section-title">Fleet Health</div>
-      <div id="fleetGrid">
-        <div class="loading" style="padding:8px 0">Aggregating…</div>
-      </div>
-      <p style="font-size:11px;color:var(--text-dim);margin-top:8px">
-        Aggregated from each compatible node's <code>/api/status</code>. Updates every 5 seconds in the background.
-      </p>
-    </div>
-
     <div class="subsection">
       <div class="section-section-title">Resources</div>
       <div class="status-grid">
@@ -3557,36 +4377,10 @@ async function renderSystem() {
         <div class="sk">Soft Resets</div>        <div class="sv">${d.resetCounter}</div>
         <div class="sk">Watchdog Resets</div>    <div class="sv ${wdtClass}">${d.wdtCounter}</div>
       </div>
-    </div>
-
-    <div class="subsection">
-      <div class="section-section-title">Backup &amp; Restore</div>
-      <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px 0;max-width:560px">
-        Snapshot every compatible node's network + port config plus masterETH's own
-        config to a single JSON file. Restore matches nodes by MAC and re-applies
-        settings; nodes that aren't currently on the LAN are skipped (and logged).
-      </p>
-      <div class="btn-row" style="margin-top: 8px">
-        <button class="btn btn-secondary" id="backupDownloadBtn">Download backup</button>
-        <label class="btn btn-secondary" style="cursor:pointer">
-          Upload &amp; restore…
-          <input type="file" id="backupRestoreInput" accept="application/json,.json" style="display:none">
-        </label>
-        <span class="save-status" id="backupStatus"></span>
-      </div>
-    </div>
-
-    <p style="font-size:11px;color:var(--text-dim);margin-top:24px">Updates every 5 seconds.</p>`;
-
-  const hb = $('hb');
-  if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
-
+    </div>`;
   renderFleetGrid();
-  wireBackupRestore();
 }
 
-// Roll up cached /api/status responses across the fleet. Pulled live
-// from nodeStatusCache, populated by the background poller.
 function renderFleetGrid() {
   const slot = $('fleetGrid');
   if (!slot) return;
@@ -3813,7 +4607,9 @@ async function collectBackup() {
     api('GET', '/api/network'),
     api('GET', '/api/nodes'),
   ]);
-  const nodes = (nodesResp.nodes || []).filter(n => n.compat === 'compatible');
+  // DMX nodes only: the bundle is network + per-port config, which a
+  // masterMIDI (routing + timecode) doesn't have.
+  const nodes = (nodesResp.nodes || []).filter(n => n.compat === 'compatible' && !isMasterMidiNode(n));
 
   // Per-node fetches in parallel-across-nodes (queued per-IP). Failures
   // are reported in the node's "error" field but don't kill the bundle.
@@ -4068,6 +4864,9 @@ $('rebootConfirm').addEventListener('click', async () => {
 function stopPollTimer() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   stopOledMirror();
+  stopQuadNetPoll();
+  stopMasterMidiPoll();
+  stopScanPoll();
 }
 
 function stopOledMirror() {
@@ -4107,17 +4906,25 @@ async function loadFromHash() {
       // the destination page's content and cause "ghost" alternation.
       if (currentPage === 'nodes') pollTimer = setInterval(renderNodes, 5000);
       break;
+    case 'switches':
+      await renderSwitches();
+      if (currentPage === 'switches') pollTimer = setInterval(renderSwitches, 5000);
+      break;
     case 'universes': await renderUniverses(); break;
     case 'test':     renderTest(); break;
     case 'monitor':
       await renderMonitor();
       if (currentPage === 'monitor') pollTimer = setInterval(renderMonitor, 1500);
       break;
-    case 'network':  await renderNetwork(); break;
+    case 'network':
+      await renderSwitchTools();
+      if (currentPage === 'network') pollTimer = setInterval(refreshSwitchTools, 5000);
+      break;
     case 'system':
       await renderSystem();
-      if (currentPage === 'system') pollTimer = setInterval(renderSystem, 5000);
+      if (currentPage === 'system') pollTimer = setInterval(refreshSystemLive, 5000);
       break;
+    case 'selftest': await renderSelfTestPage(); break;
     case 'firmware': await renderFirmware(); break;
     default:
       location.hash = '#nodes';
@@ -4143,6 +4950,77 @@ document.querySelectorAll('#nav a[data-page]').forEach(a => {
 });
 
 window.addEventListener('hashchange', loadFromHash);
+
+// ── Self-Test page ───────────────────────────────────────────────────────────
+// masterETH's own POST /api/selftest, plus the quick self-test of every online
+// device that has one. masterMIDI and quadETH answer in the same shape
+// ({tests:[{name,pass,skip,detail,tech?}]}), so one renderer covers all three.
+// The quick tests change nothing and are safe during a show; the disruptive
+// factory tests are only offered per device, on that device's own page.
+function selfTestHasOne(n) {
+  return n.online && n.compat === 'compatible' && (isQuadNode(n) || isMasterMidiNode(n));
+}
+function selfTestFailures(d) { return (d.tests || []).filter(t => !t.skip && !t.pass).length; }
+
+async function renderSelfTestPage() {
+  content.innerHTML = `
+    <div class="section-header"><div class="section-title">Self-Test</div></div>
+    <div class="subsection">
+      <div class="section-section-title">masterETH</div>
+      <p style="font-size:13px;color:var(--text-dim)">Checks masterETH's network connection, device discovery and internals. Changes nothing.</p>
+      <div class="btn-row" style="margin-top:8px"><button class="btn btn-primary btn-small" id="stSelfBtn">Run self-test</button></div>
+      <div id="stSelfOut"></div>
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">Devices</div>
+      <p style="font-size:13px;color:var(--text-dim)">Runs the quick self-test on every online device that has one
+        (quadETH and masterMIDI). It changes nothing and is safe during a show.</p>
+      <div class="btn-row" style="margin-top:8px"><button class="btn btn-secondary btn-small" id="stFleetBtn">Check all devices</button></div>
+      <div id="stFleetOut"></div>
+    </div>`;
+
+  $('stSelfBtn').addEventListener('click', async () => {
+    const out = $('stSelfOut'), btn = $('stSelfBtn');
+    btn.disabled = true;
+    out.innerHTML = '<div class="loading" style="padding:10px 0">Running…</div>';
+    try { out.innerHTML = masterMidiSelfTestHtml(await api('POST', '/api/selftest')); }
+    catch (e) { out.innerHTML = '<p style="font-size:13px;color:var(--err)">The self-test did not answer — try again.</p>'; }
+    btn.disabled = false;
+  });
+
+  $('stFleetBtn').addEventListener('click', async () => {
+    const out = $('stFleetOut'), btn = $('stFleetBtn');
+    btn.disabled = true;
+    out.innerHTML = '<div class="loading" style="padding:10px 0">Finding devices…</div>';
+    let nodes = [];
+    try { nodes = ((await api('GET', '/api/nodes')).nodes || []).filter(selfTestHasOne); } catch (e) {}
+    if (currentPage !== 'selftest') return;
+    if (!nodes.length) {
+      out.innerHTML = '<p style="font-size:13px;color:var(--text-dim)">No online devices with a self-test were found.</p>';
+      btn.disabled = false; return;
+    }
+    const name = n => getTag(n.mac) || n.nodeName || n.ip;
+    out.innerHTML = nodes.map((n, i) => `<div id="stDev${i}" style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <span class="dot"></span>${esc(name(n))} <span class="dim" style="font-size:12px">· ${esc(n.deviceType)} · ${esc(n.ip)}</span>
+        <span class="dim" style="float:right;font-size:12px">checking…</span></div>`).join('');
+    // Parallel across devices; nodeApi already serialises per device.
+    await Promise.all(nodes.map(async (n, i) => {
+      let d = null;
+      try { d = await nodeApi('POST', n.ip, '/api/selftest', {}); } catch (e) {}
+      const el = $('stDev' + i); if (!el) return;
+      const fail = d ? selfTestFailures(d) : -1;
+      const verdict = !d ? '<span style="color:var(--err)">did not answer</span>'
+        : fail ? `<span style="color:var(--err)">${fail} problem${fail > 1 ? 's' : ''} found</span>`
+               : '<span style="color:var(--ok)">all tests passed</span>';
+      el.innerHTML = `<details${fail > 0 ? ' open' : ''}><summary style="cursor:pointer;list-style:none">
+          <span class="dot ${!d || fail ? 'err' : 'ok'}"></span>${esc(name(n))}
+          <span class="dim" style="font-size:12px">· ${esc(n.deviceType)} · ${esc(n.ip)}</span>
+          <span style="float:right;font-size:12px">${verdict}</span></summary>
+          ${d ? masterMidiSelfTestHtml(d) : ''}</details>`;
+    }));
+    btn.disabled = false;
+  });
+}
 
 // ── Onboarding wizard ────────────────────────────────────────────────────────
 
@@ -4189,7 +5067,7 @@ function onboardRenderWelcome() {
   $('onboardBody').innerHTML = `
     <div class="onboard-step">
       <div class="onboard-headline">Welcome to <span>masterETH</span></div>
-      <div class="onboard-body-text">masterETH discovers all expanseElectronics dualETH nodes on your lighting LAN and gives you a single dashboard to configure them. Let's set up network and take a quick tour. Takes about 30 seconds.</div>
+      <div class="onboard-body-text">masterETH finds every expanseElectronics device on your network &mdash; dualETH and quadETH DMX nodes, quadNET switches and masterMIDI timecode hubs &mdash; and manages them from one page. Three quick steps: the network, what the status light means, and you&rsquo;re done. Everything can be changed later.</div>
       <div class="onboard-actions">
         <button id="onboardSkipAll" class="btn-secondary">Skip setup</button>
         <button id="onboardStart" class="btn-primary">Get started</button>
@@ -4210,10 +5088,12 @@ async function onboardRenderNetwork() {
       <div class="onboard-headline">Network <span>setup</span></div>
       <div class="onboard-body-text">Pick how the masterETH gets its IP address. DHCP works for most installs; a static IP is wise if you bookmark this page by address. You can also set a friendly node name.</div>
       <form id="onboardNetForm">
-        <div class="form-group"><label>DHCP</label><div><input type="checkbox" name="dhcpEnable" ${d.dhcp?'checked':''}></div></div>
+        <div class="form-group"><label>Use DHCP</label><div><input type="checkbox" name="dhcpEnable" id="onboardDhcp" ${d.dhcp?'checked':''}></div></div>
+        <div id="onboardStatic">
         <div class="form-group"><label>IP Address</label><div class="ip-row">${ipInputs('ip', d.ip)}</div></div>
         <div class="form-group"><label>Subnet</label><div class="ip-row">${ipInputs('subnet', d.subnet)}</div></div>
         <div class="form-group"><label>Gateway</label><div class="ip-row">${ipInputs('gateway', d.gateway)}</div></div>
+        </div>
         <hr class="divider">
         <div class="form-group"><label>Node Name</label><div><input type="text" name="nodeName" value="${esc(d.nodeName)}" maxlength="17"></div></div>
       </form>
@@ -4223,6 +5103,10 @@ async function onboardRenderNetwork() {
         <button class="btn-primary" id="onboardSave">Save &amp; continue</button>
       </div>
     </div>`;
+  // The fixed-address fields only matter with DHCP off — hide them otherwise.
+  const staticVis = () => { $('onboardStatic').style.display = $('onboardDhcp').checked ? 'none' : ''; };
+  $('onboardDhcp').addEventListener('change', staticVis);
+  staticVis();
   $('onboardSkip').onclick = onboardAdvance;
   $('onboardSave').onclick = async () => {
     const f = $('onboardNetForm');
@@ -4287,12 +5171,15 @@ function onboardRenderDone() {
   $('onboardBody').innerHTML = `
     <div class="onboard-step">
       <div class="onboard-headline">You're <span>ready</span></div>
-      <div class="onboard-body-text">Setup complete. If any change requires a restart, the masterETH will reboot now and the page will reconnect automatically.</div>
+      <div class="onboard-body-text">${onboardChangedIp
+        ? 'masterETH restarts now to apply the network settings, and this page follows it.'
+        : 'Setup is complete. Devices appear on the Nodes page as masterETH finds them; Self-Test checks everything.'}</div>
       <div class="onboard-actions">
-        <span class="spacer"></span>
+        <button class="btn-secondary" id="onboardBack">Back</button>
         <button class="btn-primary" id="onboardFinish">Finish</button>
       </div>
     </div>`;
+  $('onboardBack').onclick   = () => { onboardIndex--; onboardRender(); };
   $('onboardFinish').onclick = () => onboardFinalize();
 }
 
@@ -4312,10 +5199,15 @@ async function onboardFinalize() {
           <div class="onboard-step">
             <div class="onboard-headline">Rebooting…</div>
             <div class="onboard-body-text">${onboardChangedIp
-              ? 'The masterETH is restarting on a new DHCP address. Find it on your network and reload this page.'
-              : 'Page will reload in 8 seconds.'}</div>
+              ? 'masterETH is restarting on DHCP and its address may change &mdash; if this page doesn&rsquo;t come back, find it on your network.'
+              : 'This page reloads when masterETH is back.'}</div>
           </div>`;
-        setTimeout(() => location.reload(), 8000);
+        // Reload once it answers again, rather than on a guessed timer.
+        let tries = 0;
+        setTimeout(function wait() {
+          api('GET', '/api/identify').then(() => location.reload())
+            .catch(() => { if (++tries < 40) setTimeout(wait, 1500); });
+        }, 4000);
       }
       return;
     }

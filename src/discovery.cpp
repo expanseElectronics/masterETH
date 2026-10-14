@@ -315,12 +315,16 @@ void drainProbeQueue() {
 
 }  // namespace
 
+static bool g_listening = false;   // the discovery socket opened (self-test)
+
 void discoveryBegin() {
   nodeRegistryBegin();
   nodeRegistryLoad();  // Load cached nodes from EEPROM (v1.2+)
-  g_udp.begin(ARTNET_PORT);
+  g_listening = g_udp.begin(ARTNET_PORT) != 0;
   g_nextPollMs = millis() + 1000;  // first poll 1 s after boot
 }
+
+bool discoveryListening() { return g_listening; }
 
 // Broadcast one ArtDmx (OpDmx 0x5000) frame for the DMX test generator. Public
 // (called from api.cpp) so it lives outside the anonymous namespace above, but

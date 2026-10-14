@@ -111,6 +111,7 @@ void ethernetStart();   // does no WiFi work — name follows dualETH for
 
 // discovery.cpp -------------------------------------------------------------
 void discoveryBegin();
+bool discoveryListening();              // the Art-Net socket opened (self-test)
 void discoveryTick();
 void discoveryRequestImmediatePoll();   // POST /api/nodes/refresh
 void discoveryRequestLocate(IPAddress ip);   // POST /api/nodes/locate
@@ -118,6 +119,11 @@ void sendArtDmx(uint8_t net, uint8_t subnet, uint8_t universe,
                 const uint8_t* data, uint16_t len);   // DMX test generator
 const char* artnetMonitorJson();                       // GET /api/artnet-monitor
 void discoveryAnnounceTakeover();   // burst of broadcasts to refresh stale ARP caches
+// LAN port scanner (src/scanner.cpp) — non-blocking connect-scan, polled from loop().
+void scannerTick();
+bool scanStart(uint8_t start, uint8_t end, const uint16_t* ports, uint8_t nPorts);  // POST /api/scan
+void scanStop();                                                                     // POST /api/scan/stop
+const char* scannerJson();                                                           // GET  /api/scan
 // Synchronous HTTP/1.0 GET against a node, used by the node-identify proxy
 // on the management API. Blocks the loop while in flight (≤ timeoutMs).
 int  discoveryHttpGet(IPAddress ip, const char* path,

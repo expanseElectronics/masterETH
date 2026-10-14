@@ -121,7 +121,9 @@ void nodeRegistryNoteIdentified(ManagedNode* node,
   // ReadOnly so the SPA can show a "Needs v7.4" pill instead of a
   // confusing "save failed" error after the user tries to edit.
   // quadETH: all firmware versions have CORS (0.x.x versioning scheme).
-  if (strncmp(node->deviceType, "quadETH", 7) == 0) {
+  // masterMIDI: same — CORS on every /api/* response from its first release.
+  if (strncmp(node->deviceType, "quadETH", 7) == 0 ||
+      strncmp(node->deviceType, "masterMIDI", 10) == 0) {
     node->compat = NodeCompat::Compatible;
   } else {
     node->compat = versionAtLeast74(node->firmwareVersion)

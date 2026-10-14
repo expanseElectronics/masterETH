@@ -49,10 +49,14 @@ extern StoreStruct deviceSettings;
 void eepromSave();
 void eepromLoad();
 
-// Onboarding wizard flag — single EEPROM byte at address 512 (past the
-// StoreStruct). 0xA5 = wizard complete, anything else = show on next boot.
-// Mirrors the dualETH v7.5+ pattern.
-#define ONBOARD_FLAG_ADDR  512
+// Onboarding wizard flag — single EEPROM byte. 0xA5 = wizard complete,
+// anything else = show on next boot. Mirrors the dualETH v7.5+ pattern.
+// It sat at 512, which is also the first byte of the DHCP-server lease blob
+// ('D' of the "DHCP" magic): finishing the wizard broke the saved leases, and
+// saving leases re-armed the wizard. Now the last byte of the 4 KB window, in
+// the reserved tail past the node cache (see main.cpp). A unit updated from
+// the old layout shows the wizard once more.
+#define ONBOARD_FLAG_ADDR  4095
 #define ONBOARD_FLAG_MAGIC 0xA5
 
 // onboardingFlagLoad() — read EEPROM byte 512 into the `onboardingDone`
