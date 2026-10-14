@@ -73,7 +73,9 @@ a:hover { text-decoration: underline; }
   display: flex; flex-direction: column; overflow: hidden;
 }
 #main { flex: 1; overflow-y: auto; background: var(--bg); }
-#content { max-width: 760px; padding: 32px 40px; }
+/* 1080, as masterMIDI's own UI: at 760 the two-column pages (masterMIDI's
+   signal flow) ran their names into their details. */
+#content { max-width: 1080px; padding: 32px 40px; }
 
 .brand { padding: 24px 20px 16px; border-bottom: 1px solid var(--border); }
 .brand-org {
@@ -1893,8 +1895,8 @@ function masterMidiStrip(s) {
 
 function mmFlowRow(on, name, detail) {
   return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px${on ? '' : ';color:var(--text-dim)'}">
-    <span class="dot ${on ? 'ok' : ''}"></span>${name}
-    <span style="margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--text-dim)">${detail}</span></div>`;
+    <span class="dot ${on ? 'ok' : ''}" style="flex:none"></span><span style="min-width:0">${name}</span>
+    <span style="margin-left:auto;padding-left:12px;font-family:var(--mono);font-size:12px;color:var(--text-dim);white-space:nowrap">${detail}</span></div>`;
 }
 
 function masterMidiLiveHtml(s) {
@@ -1926,12 +1928,12 @@ function masterMidiLiveHtml(s) {
       <div class="section-section-title">Timecode</div>
       <div id="mmClock" style="font-family:var(--mono);font-size:clamp(30px,6vw,52px);font-weight:700;letter-spacing:.04em;color:${s.locked ? 'var(--accent2)' : 'var(--text)'}">${esc(mmTc(s))}</div>
       <div style="display:flex;gap:18px;font-family:var(--mono);font-size:12px;color:var(--text-dim);flex-wrap:wrap;margin-top:4px">
-        <span>${lock}</span><span>${esc(s.rate || s.fps)} fps</span>
+        <span style="display:inline-flex;align-items:center;gap:8px">${lock}</span><span>${esc(s.rate || s.fps)} fps</span>
       </div>
     </div>
     <div class="subsection">
       <div class="section-section-title">Signal flow</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 28px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:0 40px">
         <div><div class="hint" style="text-transform:uppercase;font-size:10px;letter-spacing:.08em">Inputs</div>${ins}</div>
         <div><div class="hint" style="text-transform:uppercase;font-size:10px;letter-spacing:.08em">Outputs</div>${outs}</div>
       </div>
@@ -2031,7 +2033,7 @@ async function renderMasterMidiDetail(n) {
     </div>
 
     ${n.online ? `
-    <div class="btn-row">
+    <div class="btn-row" style="margin-bottom:24px">
       <button class="btn btn-secondary" id="mmLocateBtn">Locate (flash 10s)</button>
       <button class="btn btn-danger" id="mmRebootBtn">Reboot</button>
     </div>
