@@ -16,6 +16,12 @@
 
 #pragma once
 #include <stdint.h>
+#include "FleetClock.h"
+
+// The fleet's shared LED clock (FleetClock.h, identical in every product): the
+// breathe and the locate flash take their phase from it, so every unit on the
+// LAN breathes in step. Carried on the discovery socket (discovery.cpp).
+extern FleetClock fleetClock;
 
 class StatusLeds {
  public:

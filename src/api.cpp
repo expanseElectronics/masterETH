@@ -230,7 +230,8 @@ void apiGetStatus() {
       "\"linkUp\":%s,"
       "\"nodesKnown\":%u,"
       "\"nodesOnline\":%u,"
-      "\"led\":\"%s\""
+      "\"led\":\"%s\","
+      "\"led_clock\":{\"leading\":%s,\"err_ms\":%ld,\"in\":%lu,\"phase_ms\":%lu}"
     "}",
     deviceSettings.nodeName,
     macBuf,
@@ -250,7 +251,11 @@ void apiGetStatus() {
     ethernetLinkStatus ? "true" : "false",
     (unsigned)nodeRegistryKnownCount(),
     (unsigned)nodeRegistryOnlineCount(),
-    statusLeds.stateString()
+    statusLeds.stateString(),
+    fleetClock.leading() ? "true" : "false",
+    (long)fleetClock.lastError(),
+    (unsigned long)fleetClock.packetsIn(),
+    (unsigned long)(fleetClock.now() % 3000)
   );
 
   if (n > 0 && (size_t)n < sizeof(json)) {

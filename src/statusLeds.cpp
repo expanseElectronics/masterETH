@@ -77,9 +77,13 @@ void StatusLeds::tick() {
     return;
   }
 
+  // The fleet clock for every animation's phase; millis() stays for the tick
+  // rate and the locate timeout.
+  const uint32_t fleet = fleetClock.now();
+
   // Locate mode — rapid orange flash at 10Hz for 10 seconds
   if (locateUntilMs_ > 0 && now < locateUntilMs_) {
-    bool on = (now / 50) % 2;  // 50ms on, 50ms off = 10Hz
+    bool on = (fleet % 100) < 50;  // 50ms on, 50ms off = 10Hz, in step with every located unit
     if (on) {
       scaleColor(buf, ORANGE_R, ORANGE_G, ORANGE_B, 255);
     } else {
@@ -94,11 +98,11 @@ void StatusLeds::tick() {
     scaleColor(buf, RED_R, RED_G, RED_B, RED_BRIGHTNESS);
     state_ = State::LinkDown;
   } else if (knownNodes_ == 0) {
-    uint8_t pulse = breathe(now, IDLE_PULSE_MAX);
+    uint8_t pulse = breathe(fleet, IDLE_PULSE_MAX);
     scaleColor(buf, PINK_R, PINK_G, PINK_B, pulse);
     state_ = State::Searching;
   } else if (onlineNodes_ == 0) {
-    uint8_t pulse = breathe(now, IDLE_PULSE_MAX);
+    uint8_t pulse = breathe(fleet, IDLE_PULSE_MAX);
     scaleColor(buf, ORANGE_R, ORANGE_G, ORANGE_B, pulse);
     state_ = State::AllOffline;
   } else if (fallbackServer_) {
@@ -106,7 +110,7 @@ void StatusLeds::tick() {
     // the box reads "I am the LAN today" at a glance. Distinct from the
     // orange AllOffline pulse because that signals failure; this signals
     // a deliberate operating mode.
-    uint8_t pulse = breathe(now, HEALTHY_PULSE_MAX);
+    uint8_t pulse = breathe(fleet, HEALTHY_PULSE_MAX);
     scaleColor(buf, AMBER_R, AMBER_G, AMBER_B, pulse);
     state_ = State::FallbackServer;
   } else {
@@ -114,7 +118,7 @@ void StatusLeds::tick() {
     // to read as confidently "all good," but not glaring; pulses on the
     // same cadence as the searching/all-offline states for visual
     // consistency.
-    uint8_t pulse = breathe(now, HEALTHY_PULSE_MAX);
+    uint8_t pulse = breathe(fleet, HEALTHY_PULSE_MAX);
     scaleColor(buf, GREEN_R, GREEN_G, GREEN_B, pulse);
     state_ = State::Healthy;
   }

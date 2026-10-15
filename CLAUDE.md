@@ -24,6 +24,16 @@ non-obvious changes.
 
 **Licensing & branding (fleet convention, 2026-06-28):** masterETH is **PolyForm Noncommercial 1.0.0** (source-available, no commercial use — see `LICENSE`; quadETH matches, dualETH stays GPL). Fleet branding scheme: `deviceType` = **`<product>-HALO`** (→ `masterETH-HALO`), `firmwareVersion` **`v`-prefixed**, serial prefix **`ME-`** (masterETH had none — add it), web `<title>` = `<product> — expanseElectronics`, GitHub org **`expanseElectronics`** (CamelCase). The quadETH CLAUDE.md "Licensing & branding" section is the canonical copy.
 
+
+## Fleet LED clock (2026-10-16)
+
+The status LED's breathe and locate flash take their phase from `fleetClock.now()` (`include/FleetClock.h`, a
+byte-identical copy of masterMIDI's reference header — keep it that way), so every product on the LAN breathes in
+step. Peer election: the lowest MAC heard in 5 s leads and alone broadcasts a 20-byte `"EXPCLK\0\0"` packet on UDP
+6454 once a second; the others follow it. Here it rides the discovery socket (`readUdp()` hands it over before the
+Art-Net check; `discoveryTick()` sends when leading) — so not in update mode, which skips discovery. `/api/status`
+`led_clock {leading, err_ms, in, phase_ms}`. masterETH's MAC (04:83:08:…) is above quadNET's 02:51:55:…, so on
+the bench it follows quadNET (correction ~3 ms per packet).
 ## Build / flash / monitor
 
 PlatformIO project, single environment `esp07`:

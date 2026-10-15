@@ -22,6 +22,7 @@
 #include "manager.h"
 #include "store.h"
 #include "nodeRegistry.h"
+#include "statusLeds.h"   // fleetClock
 
 namespace {
 
@@ -170,6 +171,7 @@ void readUdp() {
     if (packetSize <= 0) return;
     IPAddress src = g_udp.remoteIP();
     int n = g_udp.read(buf, sizeof(buf));
+    if (n > 0 && fleetClock.handle(buf, (uint16_t)n)) continue;   // the fleet LED clock, not Art-Net
     if (n < 18 || memcmp(buf, "Art-Net", 7) != 0) continue;
     uint16_t op = (uint16_t)buf[8] | ((uint16_t)buf[9] << 8);   // opcode is LSB-first
     if (op == 0x2100) {                      // ArtPollReply
@@ -316,11 +318,13 @@ void drainProbeQueue() {
 }  // namespace
 
 static bool g_listening = false;   // the discovery socket opened (self-test)
+FleetClock fleetClock;
 
 void discoveryBegin() {
   nodeRegistryBegin();
   nodeRegistryLoad();  // Load cached nodes from EEPROM (v1.2+)
   g_listening = g_udp.begin(ARTNET_PORT) != 0;
+  if (g_listening) fleetClock.begin(mac);   // our Ethernet MAC, as in /api/identify
   g_nextPollMs = millis() + 1000;  // first poll 1 s after boot
 }
 
@@ -399,6 +403,13 @@ void discoveryTick() {
 
   readUdp();
   drainProbeQueue();
+
+  // Fleet LED clock: our beat, if we're the one leading.
+  uint8_t clk[FleetClock::PACKET_LEN];
+  if (fleetClock.poll(clk) && g_udp.beginPacket(IPAddress(255, 255, 255, 255), ARTNET_PORT)) {
+    g_udp.write(clk, sizeof(clk));
+    g_udp.endPacket();
+  }
 }
 
 void discoveryRequestLocate(IPAddress ip) {
