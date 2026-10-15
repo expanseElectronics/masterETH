@@ -87,7 +87,7 @@ Mirrors dualETH:
 |---|---|
 | `src/main.cpp` | `setup()` / `loop()`. Drives `webServer.handleClient()`, `discoveryTick()`, `statusLeds.tick()`, periodic registry expire + LED state update. |
 | `src/discovery.cpp` | Hand-rolled Art-Net `ArtPoll` broadcaster (UDP 6454, 5 s cadence) + `ArtPollReply` parser. `EthernetClient`-based HTTP/1.0 GET (`httpGet` / `discoveryHttpGet`) for identify probes and the `apiGetNodeIdentify` proxy. |
-| `src/nodeRegistry.cpp` | 32-cap `ManagedNode[]` table. **MAC-keyed** (IP is a mutable display field — node IPs change with DHCP renewals). Tracks `compat: Compatible / ReadOnly / Incompatible / Unknown`. The v7.4 vs v7.3 split is decided by `versionAtLeast74()` parsing `firmwareVersion` from the identify response. |
+| `src/nodeRegistry.cpp` | 32-cap `ManagedNode[]` table. **MAC-keyed** (IP is a mutable display field — node IPs change with DHCP renewals). Tracks `compat: Compatible / ReadOnly / Incompatible / Unknown`. The v7.4 vs v7.3 split is decided by `versionAtLeast74()` parsing `firmwareVersion` from the identify response — dualETH only: quadETH, masterMIDI and quadNET (0.x versions, CORS throughout) are always Compatible. |
 | `src/api.cpp` | REST handlers. `apiGetNodeIdentify` is a server-side proxy retained as a fallback; the SPA prefers direct browser→node fetches now. |
 | `src/startFunctions.cpp` | Boot helpers: `ethernetStart()` (W5500 link-up + DHCP), `webStart()` (REST routes). |
 | `src/store.cpp` + `include/store.h` | EEPROM-backed `StoreStruct deviceSettings`. `CONFIG_VERSION = "m0b"` (bumped from `m0a` on the Manager → masterETH rename to force defaults reload). |

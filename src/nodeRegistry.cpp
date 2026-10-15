@@ -122,8 +122,12 @@ void nodeRegistryNoteIdentified(ManagedNode* node,
   // confusing "save failed" error after the user tries to edit.
   // quadETH: all firmware versions have CORS (0.x.x versioning scheme).
   // masterMIDI: same — CORS on every /api/* response from its first release.
+  // quadNET: CORS on every route from v0.2, and the Switches tab drives it with
+  // plain GETs (no preflight) — its 0.x versions would otherwise read as
+  // pre-v7.4 dualETH and come out ReadOnly.
   if (strncmp(node->deviceType, "quadETH", 7) == 0 ||
-      strncmp(node->deviceType, "masterMIDI", 10) == 0) {
+      strncmp(node->deviceType, "masterMIDI", 10) == 0 ||
+      strncmp(node->deviceType, "quadNET", 7) == 0) {
     node->compat = NodeCompat::Compatible;
   } else {
     node->compat = versionAtLeast74(node->firmwareVersion)
