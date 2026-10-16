@@ -778,6 +778,7 @@ input[type=range] { accent-color: var(--accent); width: 220px; vertical-align: m
         <a href="#" data-page="universes">Universes</a>
         <a href="#" data-page="test">DMX Test</a>
         <a href="#" data-page="monitor">Monitor</a>
+        <a href="#" data-page="timecode">Timecode</a>
         <a href="#" data-page="network">Network Tools</a>
         <a href="#" data-page="system">System</a>
         <a href="#" data-page="selftest">Self-Test</a>
@@ -945,15 +946,23 @@ function compatTag(c) {
 // SPA can fire as many fetches as it wants without tripping the wire.
 // Cross-node parallelism is fine — each node has its own listener.
 const nodeRequestQueues = new Map();  // ip -> tail Promise
-async function nodeApi(method, ip, path, body) {
+// Every call has a time limit: a fetch to an address nobody answers waits for the
+// browser's TCP timeout (a minute or more), and the per-IP queue below holds every
+// later call to that node behind it - that is how one offline node left the
+// Universes page on "Fetching fleet port configs…".
+async function nodeApi(method, ip, path, body, timeoutMs = 10000) {
   const exec = async () => {
     const url = 'http://' + ip + path;
-    const opts = { method, headers: {} };
+    const ctl = new AbortController();
+    const opts = { method, headers: {}, signal: ctl.signal };
     if (body !== undefined) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
     }
-    const r = await fetch(url, opts);
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    let r;
+    try { r = await fetch(url, opts); }
+    finally { clearTimeout(timer); }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     // Most node endpoints return JSON, but some reply text/plain (e.g. the
     // quadETH RDM discover → "started"). Tolerate both: parse JSON when we can,
@@ -1978,11 +1987,217 @@ function masterMidiRoutingHtml(routing, tc) {
             .filter(([v]) => art || v !== 7)
             .map(([v, t]) => `<option value="${v}"${v === tc.mode ? ' selected' : ''}>${t}</option>`).join(''))}</div>
         ${tc.hold_ms !== undefined ? `<div class="sk">Hold through LTC dropouts</div><div class="sv">${sel('mmHold',
-          [[0, 'Off'], [500, '0.5 s'], [1000, '1 s'], [2000, '2 s'], [5000, '5 s']]
+          [[0, 'Off'], [500, '0.5 s'], [1000, '1 s'], [2000, '2 s'], [5000, '5 s'], [65535, 'Until it returns (jam sync)']]
             .map(([v, t]) => `<option value="${v}"${v === tc.hold_ms ? ' selected' : ''}>${t}</option>`).join(''))}</div>` : ''}
       </div>
+      ${tc.offset !== undefined ? `
+      <div class="section-section-title" style="margin-top:16px">Offset</div>
+      <div class="status-grid">
+        <div class="sk">Add to every output</div><div class="sv"><input type="text" id="mmOffset" value="${esc(tc.offset)}" placeholder="+00:00:00:00" style="${QN_SEL_STYLE};width:130px"></div>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:6px">+ or − hours:minutes:seconds:frames. The unit's own clock still shows its input.</p>` : ''}
       <div class="btn-row" style="margin-top:10px"><button class="btn btn-primary btn-small" id="mmSaveBtn">Save routing</button></div>
     </div>`;
+}
+
+// Save for masterMidiRoutingHtml's form - the detail page and the Timecode page.
+// Timecode first: the node refuses a bad Art-Net address or offset (400), and the
+// routing must not switch Art-Net out on toward an address that didn't save.
+function bindMasterMidiSave(n, routing, after) {
+  $('mmSaveBtn').addEventListener('click', async () => {
+    const body = { rate: parseInt($('mmRate').value, 10), start: $('mmStart').value.trim(),
+                   mode: parseInt($('mmMode').value, 10) };
+    if ($('mmArtDest')) body.art_dest = $('mmArtDest').value.trim();
+    if ($('mmHold')) body.hold_ms = parseInt($('mmHold').value, 10);
+    if ($('mmOffset')) body.offset = $('mmOffset').value.trim() || '+00:00:00:00';
+    try {
+      const r = await fetch(`http://${n.ip}/api/timecode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) {
+        let why = 'Save failed';
+        try { why = (await r.json()).error || why; } catch (_) {}
+        toast(why, 'err'); return;
+      }
+      await nodeApi('POST', n.ip, '/api/routing', { out: MM_OUT.slice(0, mmOutCount(routing.out)).map((_, o) => parseInt($('mmOut' + o).value, 10)) });
+      toast('Routing saved');
+      if (after) after();
+    } catch (e) { toast('Save failed', 'err'); }
+  });
+}
+
+// The clock counted forward from a status sample taken at baseMs (performance.now()),
+// as the node's own page does, so a 1 s poll still reads smoothly. Drop-frame isn't
+// extrapolated (the skip rule) - it shows the polled value.
+function mmClockNow(s, baseMs) {
+  if (!s || !s.live || s.df) return mmTc(s);
+  const fps = s.fps || 25, adv = Math.max(0, Math.floor((performance.now() - baseMs) * fps / 1000));
+  let f = ((s.tc_h * 60 + s.tc_m) * 60 + s.tc_s) * fps + s.tc_f + adv;
+  const ff = f % fps; f = Math.floor(f / fps);
+  return `${mmPad(Math.floor(f / 3600) % 24)}:${mmPad(Math.floor(f / 60) % 60)}:${mmPad(f % 60)}:${mmPad(ff)}`;
+}
+
+// ── Timecode page ────────────────────────────────────────────────────────────
+// Every masterMIDI on the network (clock, what it follows, what each output
+// carries, routing changed from here) and the Art-Net timecode on the wire,
+// which masterETH hears passively on its discovery socket (/api/artnet-monitor
+// `timecode`). The masterMIDI parts are the nodes' own APIs, browser-direct.
+const ART_TC_RATE = ['24', '25', '29.97 DF', '30'];
+let tcNodes = [], tcAllNodes = [], tcState = {}, tcPrev = {}, tcEditing = null;
+
+function tcCardHtml(n) {
+  const st = tcState[n.mac] || {};
+  const s = st.s;
+  const name = getTag(n.mac) || n.nodeName || n.ip;
+  const head = `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <a href="#node/${esc(n.ip)}" style="font-weight:600">${esc(name)}</a>
+      ${n.ip && n.ip !== '0.0.0.0' ? `<span class="dim" style="font-family:var(--mono);font-size:12px">${esc(n.ip)}</span>` : ''}
+      ${n.online && s ? `<button class="btn btn-secondary btn-small" style="margin-left:auto" data-tc-edit="${esc(n.mac)}">${tcEditing === n.mac ? 'Close' : 'Change routing'}</button>` : ''}
+    </div>`;
+  if (!n.online) return head + `<p style="font-size:13px;color:var(--text-dim);margin-top:8px">Offline · seen ${formatTimeSince(n.lastSeenSecondsAgo)} ago</p>`;
+  if (!s) return head + `<p style="font-size:13px;color:var(--text-dim);margin-top:8px">${st.failed ? 'Not answering' : 'Reading…'}</p>`;
+  const slaved = (s.source || '').indexOf('Input') >= 0;
+  const lock = s.locked
+    ? `<span class="dot ${slaved ? 'ok' : 'warn'}"></span>${slaved ? 'Chasing ' + esc(s.source) : 'Internal clock'}`
+    : `<span class="dot err"></span>No timecode`;
+  const out = s.out || [], om = s.out_mask || 0;
+  const outs = MM_OUT.slice(0, mmOutCount(out)).map((nm, o) => {
+    const src = out[o];
+    const routed = !(src === 4 || src == null || MM_SRC_SHORT[src] == null);
+    const on = routed && ((om >> o) & 1);
+    let to = '';
+    if (o === 4 && routed) to = ' → ' + (s.art_dest ? esc(s.art_dest) : 'everyone');
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0${routed ? '' : ';color:var(--text-dim)'}">
+      <span class="dot ${on ? 'ok' : ''}" style="flex:none"></span>${esc(nm)}
+      <span style="margin-left:auto;font-family:var(--mono);${routed ? 'color:var(--accent2)' : ''}">${routed ? '← ' + esc(MM_SRC_SHORT[src]) + to : 'off'}</span></div>`;
+  }).join('');
+  return head + `
+    <div data-tc-clock="${esc(n.mac)}" style="font-family:var(--mono);font-size:clamp(26px,5vw,40px);font-weight:700;letter-spacing:.04em;margin-top:6px;color:${s.locked ? 'var(--accent2)' : 'var(--text)'}">${esc(mmClockNow(s, st.at))}</div>
+    <div style="display:flex;gap:16px;font-family:var(--mono);font-size:12px;color:var(--text-dim);flex-wrap:wrap;margin:2px 0 10px">
+      <span style="display:inline-flex;align-items:center;gap:8px">${lock}</span><span>${esc(s.rate || s.fps)} fps</span>
+    </div>${outs}`;
+}
+
+function tcArtHtml(d) {
+  const now = Date.now();
+  const rows = (d.timecode || []).map(t => {
+    const key = t.ip + '/' + t.stream, prev = tcPrev[key];
+    let pps = null;
+    if (prev && now > prev.t && t.count >= prev.count) pps = Math.round((t.count - prev.count) * 1000 / (now - prev.t));
+    tcPrev[key] = { count: t.count, t: now };
+    return Object.assign({ pps }, t);
+  });
+  const live = rows.filter(r => r.age < 1500);
+  const named = ip => {
+    const n = tcNodes.find(x => x.ip === ip) || tcAllNodes.find(x => x.ip === ip);
+    return n ? esc(getTag(n.mac) || n.nodeName || ip) + ` <span class="dim">${esc(ip)}</span>` : esc(ip);
+  };
+  const conflict = live.length > 1;
+  return `
+    <div class="section-section-title">Art-Net timecode on the network</div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">What masterETH hears: timecode sent to everyone, or to masterETH's own address.
+      Sent to one other device it never passes by here.
+      ${conflict ? `<span style="color:var(--err)">${live.length} senders at once — a console following Art-Net timecode will jump between them.</span>` : ''}</p>
+    ${rows.length ? `
+    <div style="overflow-x:auto"><div class="status-grid" style="grid-template-columns:minmax(160px,1fr) 60px 130px 80px 70px 60px;min-width:600px">
+      <div class="sk" style="font-weight:600">Sender</div>
+      <div class="sk" style="font-weight:600">Stream</div>
+      <div class="sk" style="font-weight:600">Timecode</div>
+      <div class="sk" style="font-weight:600">Rate</div>
+      <div class="sk" style="font-weight:600">Frames/s</div>
+      <div class="sk" style="font-weight:600">Last</div>
+      ${rows.map(r => {
+        const cls = r.age >= 1500 ? 'dim' : (conflict ? 'err' : '');
+        return `
+          <div class="sv ${cls}">${named(r.ip)}</div>
+          <div class="sv ${cls}">${r.stream}</div>
+          <div class="sv ${cls}" style="font-family:var(--mono)">${mmPad(r.h)}:${mmPad(r.m)}:${mmPad(r.s)}${r.type === 2 ? ';' : ':'}${mmPad(r.f)}</div>
+          <div class="sv ${cls}">${ART_TC_RATE[r.type] || '?'}</div>
+          <div class="sv ${cls}">${r.pps == null ? '—' : r.pps}</div>
+          <div class="sv ${cls}">${r.age < 1500 ? 'now' : Math.round(r.age / 1000) + ' s ago'}</div>`;
+      }).join('')}
+    </div></div>` : `<div class="empty-state">No Art-Net timecode heard in the last 10 seconds.</div>`}`;
+}
+
+async function tcOpenEditor(n) {
+  const box = $('tcEditor');
+  if (!box) return;
+  if (tcEditing === n.mac) { tcEditing = null; box.innerHTML = ''; tcPaintCards(); return; }
+  tcEditing = n.mac;
+  tcPaintCards();
+  box.innerHTML = '<div class="loading" style="padding:16px 0">Reading the routing…</div>';
+  try {
+    const [routing, tc] = await Promise.all([nodeApi('GET', n.ip, '/api/routing'), nodeApi('GET', n.ip, '/api/timecode')]);
+    if (currentPage !== 'timecode' || tcEditing !== n.mac) return;
+    box.innerHTML = `<div class="section-section-title" style="color:var(--accent2)">${esc(getTag(n.mac) || n.nodeName || n.ip)}</div>` +
+      masterMidiRoutingHtml(routing, tc);
+    bindMasterMidiSave(n, routing, () => tcPoll(n));
+  } catch (e) {
+    box.innerHTML = '<p style="font-size:13px;color:var(--err)">Could not read the routing.</p>';
+  }
+}
+
+function tcPaintCards() {
+  tcNodes.forEach(n => { const el = document.querySelector(`[data-tc-card="${CSS.escape(n.mac)}"]`); if (el) el.innerHTML = tcCardHtml(n); });
+  document.querySelectorAll('[data-tc-edit]').forEach(b => b.addEventListener('click', () => {
+    const n = tcNodes.find(x => x.mac === b.dataset.tcEdit); if (n) tcOpenEditor(n);
+  }));
+}
+
+async function tcPoll(n) {
+  const st = tcState[n.mac] = tcState[n.mac] || {};
+  if (st.busy || !n.online) return;
+  st.busy = true;
+  const t0 = performance.now();
+  try { st.s = await nodeApi('GET', n.ip, '/api/status', undefined, 3000); st.at = (t0 + performance.now()) / 2; st.failed = false; }
+  catch (e) { st.failed = true; st.s = null; }
+  st.busy = false;
+  if (currentPage !== 'timecode') return;
+  const el = document.querySelector(`[data-tc-card="${CSS.escape(n.mac)}"]`);
+  if (el) { el.innerHTML = tcCardHtml(n); el.querySelector('[data-tc-edit]')?.addEventListener('click', () => tcOpenEditor(n)); }
+}
+
+async function tcRefreshArt() {
+  let d;
+  try { d = await api('GET', '/api/artnet-monitor'); } catch (e) { return; }
+  if (currentPage !== 'timecode') return;
+  const el = $('tcArt'); if (el) el.innerHTML = tcArtHtml(d);
+  const hb = $('hb'); if (hb) { hb.classList.remove('pulse'); void hb.offsetWidth; hb.classList.add('pulse'); }
+}
+
+async function renderTimecode() {
+  content.innerHTML = '<div class="loading">Finding timecode units…</div>';
+  let nodesResp;
+  try { nodesResp = await api('GET', '/api/nodes'); }
+  catch (e) { content.innerHTML = '<div class="error-msg">Could not reach masterETH.</div>'; return; }
+  if (currentPage !== 'timecode') return;
+  tcNodes = (nodesResp.nodes || []).filter(isMasterMidiNode)
+    .sort((a, b) => (b.online - a.online) || (getTag(a.mac) || a.nodeName || a.ip).localeCompare(getTag(b.mac) || b.nodeName || b.ip));
+  tcAllNodes = nodesResp.nodes || [];
+  tcEditing = null;
+  content.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Timecode</div>
+      <div class="heartbeat" id="hb"><span class="hb-dot"></span>live</div>
+    </div>
+    <div class="subsection">
+      <div class="section-section-title">masterMIDI</div>
+      ${tcNodes.length ? `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+        ${tcNodes.map(n => `<div data-tc-card="${esc(n.mac)}" style="border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface)${n.online ? '' : ';opacity:.6'}"></div>`).join('')}
+      </div>
+      <div id="tcEditor" style="margin-top:16px"></div>` : `<div class="empty-state">No masterMIDI found on the network yet.</div>`}
+    </div>
+    <div class="subsection" id="tcArt"></div>`;
+  tcPaintCards();
+  const all = () => { tcNodes.forEach(tcPoll); tcRefreshArt(); };
+  all();
+  pollTimer = setInterval(all, 1000);
+  mmClockTimer = setInterval(() => {
+    tcNodes.forEach(n => {
+      const st = tcState[n.mac]; if (!st || !st.s) return;
+      const el = document.querySelector(`[data-tc-clock="${CSS.escape(n.mac)}"]`);
+      if (el) el.textContent = mmClockNow(st.s, st.at);
+    });
+  }, 40);
 }
 
 function masterMidiSelfTestHtml(d) {
@@ -2090,24 +2305,7 @@ async function renderMasterMidiDetail(n) {
     const [routing, tc] = await Promise.all([nodeApi('GET', n.ip, '/api/routing'), nodeApi('GET', n.ip, '/api/timecode')]);
     if (currentPage !== 'node-detail' || detailNode !== n) return;
     $('mmRouting').innerHTML = masterMidiRoutingHtml(routing, tc);
-    $('mmSaveBtn').addEventListener('click', async () => {
-      // Timecode first: the node refuses a bad Art-Net address (400), and the
-      // routing must not switch Art-Net out on toward an address that didn't save.
-      const body = { rate: parseInt($('mmRate').value, 10), start: $('mmStart').value.trim(),
-                     mode: parseInt($('mmMode').value, 10) };
-      if ($('mmArtDest')) body.art_dest = $('mmArtDest').value.trim();
-      if ($('mmHold')) body.hold_ms = parseInt($('mmHold').value, 10);
-      try {
-        const r = await fetch(`http://${n.ip}/api/timecode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!r.ok) {
-          let why = 'Save failed';
-          try { why = (await r.json()).error || why; } catch (_) {}
-          toast(why, 'err'); return;
-        }
-        await nodeApi('POST', n.ip, '/api/routing', { out: MM_OUT.slice(0, mmOutCount(routing.out)).map((_, o) => parseInt($('mmOut' + o).value, 10)) });
-        toast('Routing saved');
-      } catch (e) { toast('Save failed', 'err'); }
-    });
+    bindMasterMidiSave(n, routing);
   } catch (e) {
     $('mmRouting').innerHTML = '<div class="subsection"><p style="font-size:13px;color:var(--err)">Could not read the routing.</p></div>';
   }
@@ -3209,7 +3407,7 @@ async function renderDualRdmTab(n) {
 
   $('rdmScan').addEventListener('click', async () => {
     try {
-      await nodeApi('POST', n.ip, '/api/rdm/discover', { full: true });
+      await nodeApi('POST', n.ip, '/api/rdm/discover', { full: true }, 60000);
       rdmOpenUid = null;
       for (const k of Object.keys(rdmDetail)) delete rdmDetail[k];
       rdmDualSigLast = '';
@@ -3565,7 +3763,7 @@ async function rdmDiscover(n) {
   rdmBusy = true;
   const btn = $('rdmDiscBtn'); if (btn) btn.disabled = true;
   rdmStat('discovering…');
-  try { await nodeApi('POST', n.ip, '/api/rdm/discover?port=' + rdmPort); }
+  try { await nodeApi('POST', n.ip, '/api/rdm/discover?port=' + rdmPort, undefined, 60000); }
   catch (e) { rdmBusy = false; if (btn) btn.disabled = false; rdmStat('error'); toast('Discover failed: ' + e.message, 'err'); return; }
   let polls = 0;
   stopRdmPoll();
@@ -3913,7 +4111,7 @@ async function renderUniverses() {
   // JSON (returned for any /api/* path) registers as a phantom universe-0 port
   // and a false conflict.
   const nodes = (nodesResp.nodes || []).filter(n =>
-    (n.compat === 'compatible' || n.compat === 'readonly') && !isQuadNetNode(n) && !isMasterMidiNode(n));
+    (n.compat === 'compatible' || n.compat === 'readonly') && n.online && !isQuadNetNode(n) && !isMasterMidiNode(n));
 
   // Fetch per-node port configs in parallel-across-nodes (the per-IP queue
   // serialises within a node). Failures are tolerated — one offline node
@@ -4964,6 +5162,7 @@ async function loadFromHash() {
       await renderMonitor();
       if (currentPage === 'monitor') pollTimer = setInterval(renderMonitor, 1500);
       break;
+    case 'timecode': await renderTimecode(); break;
     case 'network':
       await renderSwitchTools();
       if (currentPage === 'network') pollTimer = setInterval(refreshSwitchTools, 5000);

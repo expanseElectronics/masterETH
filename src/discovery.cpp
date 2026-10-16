@@ -164,6 +164,40 @@ void recordArtDmx(IPAddress src, uint8_t net, uint8_t subUni, uint16_t len) {
   g_artMon[slot].used     = true;
 }
 
+// ---- Art-Net timecode monitor (OpTimeCode, 0x9700) ----------------------
+// The latest frame from each sender, for the SPA's Timecode page. Same socket,
+// same no-extra-RAM-per-packet approach as the ArtDmx tally. Keyed by (source
+// IP, stream id): Art-Net 4 lets one sender run several streams. Four slots -
+// more than one sender is already a fault worth showing (two clocks fighting
+// over every console that chases Art-Net timecode).
+struct ArtTc {
+  IPAddress ip;
+  uint32_t count;
+  uint32_t lastMs;
+  uint8_t  stream, h, m, s, f, type;   // type: 0 = 24, 1 = 25, 2 = 29.97 DF, 3 = 30
+  bool     used;
+};
+constexpr uint8_t ART_TC_MAX = 4;
+ArtTc g_artTc[ART_TC_MAX];
+
+void recordArtTimecode(IPAddress src, const uint8_t* p) {
+  const uint8_t stream = p[13];
+  int slot = -1, oldest = 0;
+  uint32_t oldestMs = 0xFFFFFFFF;
+  for (int i = 0; i < ART_TC_MAX; i++) {
+    if (g_artTc[i].used && g_artTc[i].ip == src && g_artTc[i].stream == stream) { slot = i; break; }
+    if (!g_artTc[i].used) { if (slot < 0) slot = i; continue; }
+    if (g_artTc[i].lastMs < oldestMs) { oldestMs = g_artTc[i].lastMs; oldest = i; }
+  }
+  if (slot < 0) slot = oldest;   // evict least-recently-heard
+  ArtTc& t = g_artTc[slot];
+  if (!t.used || t.ip != src || t.stream != stream) { t.count = 0; t.ip = src; t.stream = stream; }
+  t.f = p[14]; t.s = p[15]; t.m = p[16]; t.h = p[17]; t.type = p[18] & 3;
+  t.count++;
+  t.lastMs = millis();
+  t.used = true;
+}
+
 void readUdp() {
   static uint8_t buf[256];
   while (true) {
@@ -178,6 +212,8 @@ void readUdp() {
       parseArtPollReply(buf, (size_t)n, src);
     } else if (op == 0x5000) {               // ArtDmx (OpDmx) — tally activity
       recordArtDmx(src, buf[15], buf[14], (uint16_t)(((uint16_t)buf[16] << 8) | buf[17]));
+    } else if (op == 0x9700 && n >= 19) {    // ArtTimeCode
+      recordArtTimecode(src, buf);
     }
   }
 }
@@ -363,7 +399,7 @@ void sendArtDmx(uint8_t net, uint8_t subnet, uint8_t universe,
 // so it sits outside the anonymous namespace but still reaches g_artMon. Stale
 // entries (>10 s since last frame) are dropped from the output.
 const char* artnetMonitorJson() {
-  static char buf[2600];
+  static char buf[3100];   // 24 sources (~95 B each) + 4 timecode senders (~110 B each)
   uint32_t now = millis();
   int o = snprintf(buf, sizeof(buf), "{\"sources\":[");
   bool first = true;
@@ -380,7 +416,19 @@ const char* artnetMonitorJson() {
       (unsigned long)g_artMon[i].count, g_artMon[i].len,
       (unsigned long)(now - g_artMon[i].lastMs));
     first = false;
-    if (o > (int)sizeof(buf) - 130) break;
+    if (o > (int)sizeof(buf) - 130 - ART_TC_MAX * 110) break;   // keep room for the timecode list
+  }
+  o += snprintf(buf + o, sizeof(buf) - o, "],\"timecode\":[");
+  first = true;
+  for (int i = 0; i < ART_TC_MAX; i++) {
+    const ArtTc& t = g_artTc[i];
+    if (!t.used || (now - t.lastMs) > 10000) continue;
+    o += snprintf(buf + o, sizeof(buf) - o,
+      "%s{\"ip\":\"%u.%u.%u.%u\",\"stream\":%u,\"h\":%u,\"m\":%u,\"s\":%u,\"f\":%u,"
+      "\"type\":%u,\"count\":%lu,\"age\":%lu}",
+      first ? "" : ",", t.ip[0], t.ip[1], t.ip[2], t.ip[3], t.stream, t.h, t.m, t.s, t.f, t.type,
+      (unsigned long)t.count, (unsigned long)(now - t.lastMs));
+    first = false;
   }
   snprintf(buf + o, sizeof(buf) - o, "]}");
   return buf;

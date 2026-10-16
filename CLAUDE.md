@@ -34,6 +34,24 @@ step. Peer election: the lowest MAC heard in 5 s leads and alone broadcasts a 20
 Art-Net check; `discoveryTick()` sends when leading) — so not in update mode, which skips discovery. `/api/status`
 `led_clock {leading, err_ms, in, phase_ms}`. masterETH's MAC (04:83:08:…) is above quadNET's 02:51:55:…, so on
 the bench it follows quadNET (correction ~3 ms per packet).
+## Timecode page (2026-10-16)
+
+Sidebar **Timecode** (`renderTimecode`): a card per masterMIDI — live clock (polled 1 s, counted forward locally by
+`mmClockNow`), lock/source/rate, and what each output carries (Art-Net out shows where it sends) — with *Change routing*
+opening `masterMidiRoutingHtml` below the cards (one unit at a time; the cards repaint every second, the editor doesn't).
+The form and its save (`bindMasterMidiSave`) are shared with the masterMIDI detail page, and now include the **offset**
+and a **jam sync** hold option. Below: **Art-Net timecode on the network** — `discovery.cpp` records each OpTimeCode
+(0x9700) on the discovery socket per (sender IP, stream), four slots, and `/api/artnet-monitor` carries them as
+`timecode` (h/m/s/f, type, count, age). More than one live sender is flagged red: a console chasing Art-Net timecode
+would jump between them. masterETH only hears timecode broadcast or sent to it — unicast to someone else never
+passes by. Cost: ~600 B static RAM (monitor buffer 2600 → 3100); free heap 8.3 → 7.5 KB. Verified: 150/150 frames
+from a Mac sender, both pages at 1280 and 390 px with no JS errors, an unchanged Save left a masterMIDI's settings identical.
+
+**`nodeApi()` has a time limit** (10 s default, 60 s for RDM discovery, 3 s for the Timecode page's status polls).
+Without it a fetch to an offline node's address hangs for Chromium's TCP timeout (> 22 s measured), and the per-IP
+queue holds every later call to that node behind it — the Universes page sat on "Fetching fleet port configs…" while
+the quadETH was offline. Universes now also skips offline nodes.
+
 ## Build / flash / monitor
 
 PlatformIO project, single environment `esp07`:
